@@ -1,0 +1,112 @@
+Pixel Expression (What's New in 2027.1 Update)
+
+Use the Pixel Expression node to apply colour-based changes to a clip using the GLSL shading language. Contrary to Matchbox, it is not required to create a shader using .glsl and .xml files outside of the application, and then load the shader to use it.
+
+What you can achieve using the Pixel Expression node is more limited, but the commands are written inside the application and directly applied to the image, making it easier to apply simpler changes.
+
+	
+Access 	To access the Pixel Expression menu, use:
+
+    Batch, then select the node from the All Nodes bin.
+    Timeline, then use Batch FX. See Creating Batch FX.
+    The Modular Keyer, then select the node from the Node bin.
+
+Inputs 	
+
+    Front 1 - A clip on which the Red, Green, and Blue channels are to be modified.
+    Front 2 - A clip from which pixels from the Red, Green, and Blue channels are used in conjunction with the clip connected to Front 1.
+    Constraint - A black and white clip used to limit the region on which the effect is applied.
+    Matte 1 - A greyscale clip on which the black, grey, and white pixels are modified.
+    Matte 2 - A greyscale clip from which pixels are used in conjunction with the clip connected to Matte 1.
+
+Outputs 	
+
+    Result - The output of the Red, Green, and Blue channels expressions.
+    OutMatte - The output of the Matte channel expression.
+
+Note: A clip must be connected to the Front 1 input socket for a result to be rendered out of the Result output socket. Connecting a clip to the Front 2 or Constraint input sockets is optional. Similarly, a clip must be connected to the Matte 1 input socket for a result to be rendered out of the OutMatte output socket. Connecting a clip to the Matte 2 input socket is optional.
+
+Workflow
+
+All the changes made to the images are processed using the Red, Green, Blue, and Matte channel expression fields. These fields use mathematical formulas written in the GLSL shading language to calculate the changes to be applied.
+
+Built-in and custom variables, and formulas can be defined to allow values to be modified from the user interface.
+
+Settings
+Channels
+Red Channel Expression field
+
+Sets the GLSL mathematical formula to be applied to the pixels of the red channel from clips connected to the Front inputs.
+Green Channel Expression field
+
+Sets the GLSL mathematical formula to be applied to the pixels of the green channel from clips connected to the Front inputs.
+Blue Channel Expression field
+
+Sets the GLSL mathematical formula to be applied to the pixels of the blue channel from clips connected to the Front inputs.
+Matte Channel Expression field
+
+Sets the GLSL mathematical formula to be applied to the pixels from clips connected to the Matte inputs.
+Add option
+
+Click to add a GLSL Trigonometry, Exponential, Common Operator, or Generic Function command or one of the Inputs, Built-in variables, Custom Variables, or Formulas to the corresponding channel expression field.
+
+Use these options in the Inputs submenu to get pixel information from the clips connected to the node:
+Select: 	To:
+front1.r or r1 	Get information from pixels in the Red channel of the clip connected to the Front 1 input socket.
+front1.g or g1 	Get information from pixels in the Green channel of the clip connected to the Front 1 input socket.
+front1.b or b1 	Get information from pixels in the Blue channel of the clip connected to the Front 1 input socket.
+front2.r or r2 	Get information from pixels in the Red channel of the clip connected to the Front 2 input socket.
+front2.g or g2 	Get information from pixels in the Green channel of the clip connected to the Front 2 input socket.
+front2.b or b2 	Get information from pixels in the Blue channel of the clip connected to the Front 2 input socket.
+matte1.a or m1 	Get information from pixels of the clip connected to the Matte 1 input socket.
+matte2.a or m2 	Get information from pixels of the clip connected to the Matte 2 input socket.
+
+Built-In Variables
+
+The following built-in variables can be used in the mathematical formulas set in the Channel expression fields:
+Variable: 	Returns:
+E 	The Euler number: 2.718281828.
+PI 	The PI number: 3.14159265359.
+centre.x 	The value set in the Centre X field.
+centre.y 	The value set in the Centre Y field.
+width 	The width of the clip connected to the Front 1 input socket.
+height 	The height of the clip connected to the Front 1 input socket.
+x 	The position of the pixel along the X axis.
+y 	The position of the pixel along the Y axis.
+Centre X field
+
+Sets the value of the centre.x built-in variable.
+Centre Y field
+
+Sets the value of the centre.y built-in variable.
+Show Icon
+
+Enable to display the on-screen manipulator used to modify the Centre X and Centre Y parameters.
+
+Variables and Formulas
+
+In addition to the built-in variables, it is possible to set 8 custom variables and 4 custom formulas. These custom parameters can be used to either make it possible to easily modify their values using fields in the user interface or to create more complex formulas that can be used in multiple channel expression fields.
+Variable Name field
+
+Sets a custom name for a variable. This is the name to be used in the channel expression fields under the Channels section.
+Variable Numeric field
+
+Sets a float value for the corresponding custom variable.
+
+The values in these fields are normal floats and are incremented to the tenths value by default. In some mathematical expressions, the expected value is between 0.00 and 1.00, making adjustments to these fields too sensitive. In such a scenario, you can either:
+
+    Divide the value inside the channel expression fields. For example, dividing the variable by 100 will make the values between 0.00 and 100.00 in the numeric fields map to 0.00 and 1.00 in the channel expression.
+    Use the Slow Drag Increment keyboard shortcut (Space + Drag) while dragging in a numeric field to increment to the hundredths.
+
+Note: Since the application must first compile the content of the channel expression fields to render the result, it is not possible for the image to update while a variable numeric field is being dragged. The image is updated once the numeric field is no longer active.
+
+All the variable numeric parameters can be animated and have a channel available in the Animation editor.
+Formula Type option
+
+Select whether the formula returns a float, vec2, vec3, or vec4.
+Formula Name field
+
+Sets a custom name for a formula. This is the name to be used in the channel expression fields under the Channels section.
+Formula Text field
+
+Sets a mathematical operation or expression for the corresponding custom formula. Built-in variables and custom variables can be used inside a formula.
