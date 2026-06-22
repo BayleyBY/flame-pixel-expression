@@ -104,6 +104,13 @@ files and their companion `.md` docs are generated from it.
   them.
 - **Noise:** every `noise/` generator has a `seed` (offset into the field — keyframe it to
   drift/evolve) plus shaping vars (`gain`, `lacunarity`/`persistence`, `jitter`).
+- **Node dependencies:** some setups are only one stage of a Batch graph — ST-map generators
+  (`uv_distortion/`, `stmap_generators/`, `utility/stmap`) emit a UV map for a downstream
+  **STMap**; `coc_from_depth`/`depth_dof_mask` feed a **variable-blur/Defocus**; depth / P /
+  normal / AOV / crypto tools need a specific pass wired **upstream**; `channel_pack`↔
+  `channel_unpack` and `rgb_to_hsv`↔`hsv_to_rgb` are pairs. These are recorded in the `DEPENDS`
+  table (renders a **## Node dependencies** section into each `.md`) and explained in full in
+  `documentation/node_dependencies.md` — keep the two in sync when adding a node-dependent setup.
 
 ## Reuse the generator helpers
 Before writing new GLSL, check the helpers near the top of `tools/generate_setups.py`:
@@ -113,6 +120,13 @@ RGB+Matte for a matte generator), `_HOLLOW()`, the noise builders (`_VALUE_NOISE
 `HSV_Q`, `_HUE`, `_SAT`, `_LUMA`, the `_HROT_R/G/B` hue-rotation matrix rows, `_hue_band()`,
 `_hue2rgb()`). Variable budget is 8; colour vars eat 6. HSV decode (`HSV_P`+`HSV_Q`) eats 2
 of the 4 formula slots.
+
+The later experimental categories add their own helper families (also near the top of the
+generator): `_fractal_chain()`/`_fractal_step()` + `_FRAC_ESCAPE`/`_FRAC_PIX` (the 4-formula
+escape-time chain — see the fractal architecture note under "Live-Flame status"); the
+seven-segment builders `_seven_seg_expr()`/`_seg_bar()`/`_seg_eq()` + `_SEG_ON`/`_SEG_GEO` and
+`_LUMA01`; and the `DEPENDS`/`_dep()` machinery that renders each setup's node-dependency
+section. `stylization/` setups are collected in a `_STYLIZATION` list appended to `SETUPS`.
 
 ## Folders (112 setups, all under `setups/`)
 `alpha_matte_tools` `pattern_generators` `animated_generators` `color_grade`
