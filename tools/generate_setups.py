@@ -231,6 +231,192 @@ def _solid(expr):
     """Matte-generating setup: write the same 0..1 result to RGB *and* the Matte field."""
     return {"red": expr, "green": expr, "blue": expr, "matte": expr}
 
+
+# --- Escape-time fractals ----------------------------------------------------
+# The node has no reassignable state, so the ONLY way to iterate z is the 4-formula
+# chain: formula0 does K inlined steps from the seed, formula1 references formula0 BY
+# NAME and does K more, etc. A vec3 carries state: .xy = z (complex), .z = smooth escape
+# accumulator. Each step adds step(dot(z,z), bailout) — 1.0 while still inside the bailout
+# radius, 0.0 once escaped — so summing across all iterations gives a 0..count "how long it
+# survived" value we normalise to 0..1. Deliberately shallow (K*4 iterations): interiors
+# read solid, edges band — experimental, not a deep-zoom renderer.
+# K is small on purpose: a complex square references z several times, so inlining a step
+# expands the string by ~8x. K=2 keeps each formula ~3.7KB (well under the 8KB budget);
+# K=3 would blow past 33KB. 8 total iterations is the practical ceiling here.
+_FRAC_K = 2                      # iterations per formula slot
+_FRAC_FORMULAS = 4               # formula slots used by the chain
+_FRAC_TOTAL = _FRAC_K * _FRAC_FORMULAS   # 20 — the accum normaliser
+# Pixel mapped to the complex plane relative to the node Centre, scaled by `zoom`.
+_FRAC_PIX = "vec2((x - centre.x) / zoom, (y - centre.y) / zoom)"
+
+
+def _fractal_step(prev, c, abs_z=False):
+    """One escape-time iteration as a vec3 expression. `prev` is a vec3 expr (.xy=z,
+    .z=accum); `c` is a vec2 expr (the added constant). step() adds 1 while |z|^2<bailout.
+    With abs_z (burning_ship) the components fold to abs before squaring."""
+    zx = f"abs(({prev}).x)" if abs_z else f"({prev}).x"
+    zy = f"abs(({prev}).y)" if abs_z else f"({prev}).y"
+    # complex square of (zx,zy) then + c
+    nzx = f"({zx}) * ({zx}) - ({zy}) * ({zy}) + ({c}).x"
+    nzy = f"2.0 * ({zx}) * ({zy}) + ({c}).y"
+    accum = f"({prev}).z + step(dot(({prev}).xy, ({prev}).xy), 4.0)"
+    return f"vec3({nzx}, {nzy}, {accum})"
+
+
+def _fractal_chain(start, c, abs_z=False):
+    """Build the 4 formula entries (name, expr, TYPE=2 vec3) for the escape-time chain.
+    `start` = vec3 seed expr (.xy=z0, .z=0); `c` = vec2 constant expr. f0 does K steps from
+    the seed; f1..f3 each reference the previous formula by name and do K more."""
+    forms = []
+    prev = start
+    for slot in range(_FRAC_FORMULAS):
+        expr = prev
+        for _ in range(_FRAC_K):
+            expr = _fractal_step(expr, c, abs_z)
+        name = f"z{slot}"
+        forms.append((name, expr, 2))
+        prev = name   # next slot references this formula by name (one cheap token)
+    return forms
+
+
+# Smooth 0..1 escape value from the final formula's accumulator (z3.z), normalised by the
+# total iteration count. 0 = never escaped (interior), 1 = escaped immediately (far outside).
+_FRAC_ESCAPE = f"clamp(z3.z / {float(_FRAC_TOTAL)}, 0.0, 1.0)"
+
+
+# --- Stylization helpers -----------------------------------------------------
+# Rec.709 luma of Front 1, clamped to 0..1 (the source tone these looks shade by).
+_LUMA01 = f"clamp({_LUMA}, 0.0, 1.0)"
+
+
+def _seg_eq(n):
+    """1.0 when the (rounded) `digit` variable equals integer n, else 0.0. `digit` may be
+    fractional from keyframing, so it's rounded with floor(digit + 0.5)."""
+    return f"(step({n - 0.5}, floor(digit + 0.5)) * step(floor(digit + 0.5), {n + 0.5}))"
+
+
+def _seg_bar(cx, cy, hx, hy):
+    """0..1 fill of one 7-segment bar: a box centred at (cx,cy) with half-extents (hx,hy)
+    in digit-local space (formula `p`). 1 inside, 0 outside, soft 0.04 edge."""
+    d = (f"length(max(abs(p - vec2({cx}, {cy})) - vec2({hx}, {hy}), 0.0)) "
+         f"+ min(max(abs(p.x - ({cx})) - {hx}, abs(p.y - ({cy})) - {hy}), 0.0)")
+    return f"(1.0 - smoothstep(-0.02, 0.02, {d}))"
+
+
+# 7-segment truth table as on-sets per segment a..g (which digits light each bar).
+_SEG_ON = {
+    "a": [0, 2, 3, 5, 6, 7, 8, 9], "b": [0, 1, 2, 3, 4, 7, 8, 9],
+    "c": [0, 1, 3, 4, 5, 6, 7, 8, 9], "d": [0, 2, 3, 5, 6, 8, 9],
+    "e": [0, 2, 6, 8], "f": [0, 4, 5, 6, 8, 9], "g": [2, 3, 4, 5, 6, 8, 9],
+}
+# Bar geometry in digit-local space: (centre x, centre y, half-w, half-h). `t`=stroke half-
+# width (var thick), `hw`/`hh`=bar half-lengths. y up: a=top, g=middle, d=bottom.
+_SEG_GEO = {
+    "a": ("0.0", "1.0", "hw", "thick"), "b": ("hw", "0.5", "thick", "hh"),
+    "c": ("hw", "-0.5", "thick", "hh"), "d": ("0.0", "-1.0", "hw", "thick"),
+    "e": ("-hw", "-0.5", "thick", "hh"), "f": ("-hw", "0.5", "thick", "hh"),
+    "g": ("0.0", "0.0", "hw", "thick"),
+}
+
+
+def _seven_seg_expr():
+    """Union of the lit bars: max over segments of (lit ? fill : 0)."""
+    terms = []
+    for s in "abcdefg":
+        on = " + ".join(_seg_eq(n) for n in _SEG_ON[s])
+        cx, cy, hx, hy = _SEG_GEO[s]
+        terms.append(f"({on}) * {_seg_bar(cx, cy, hx, hy)}")
+    expr = terms[0]
+    for t in terms[1:]:
+        expr = f"max({expr}, {t})"
+    return expr
+
+
+# Per-pixel stylizations of Front 1 (no neighbour gather). Appended to SETUPS below.
+_STYLIZATION = [
+    # Halftone dots — rotate coords by `angle`, tile into `cell`-px cells, draw a dot
+    # whose radius tracks the cell luma. Formula `lp` = rotated coords; `dot` = cell-local
+    # distance-to-centre minus the luma-driven radius. Two-colour (paper -> ink).
+    dict(name="halftone",
+         **_two_color("smoothstep(-1.5, 1.5, dot)"),
+         variables=[("cell", 12), ("angle", 0.4)] + _COLVARS,
+         formulas=[("lp", "vec2(cos(angle) * (x - centre.x) - sin(angle) * (y - centre.y), sin(angle) * (x - centre.x) + cos(angle) * (y - centre.y))", 1),
+                   ("dot", f"length(mod(lp, cell) - cell * 0.5) - cell * 0.5 * sqrt({_LUMA01})", 0)]),
+
+    # Ordered 4x4 Bayer dithering — `bv` is the dispersed threshold (0..1) built by index
+    # math (NO loop): interleave the low 2 bits of int(x),int(y). Luma is posterized to
+    # `levels` steps with the per-pixel threshold dithered in. Classic 1-bit / GameBoy look.
+    dict(name="bayer_dither",
+         **_two_color("floor(luma * (levels - 1.0) + bv) / max(levels - 1.0, 1.0)"),
+         variables=[("levels", 2.0)] + _COLVARS,
+         formulas=[("px", "vec2(mod(floor(x), 4.0), mod(floor(y), 4.0))", 1),
+                   ("bv", "(mod(px.x, 2.0) * 8.0 + mod(px.y, 2.0) * 4.0 + floor(px.x / 2.0) * 2.0 + floor(px.y / 2.0) + 0.5) / 16.0", 0),
+                   ("luma", _LUMA01, 0)]),
+
+    # Pen crosshatch — 4 line sets (0/45/90/135 deg) switch on as luma drops through 4 even
+    # thresholds (darker = more directions = denser shading). `hatch` = product of the
+    # active line masks (1=paper); output ink-on-paper. `spacing` px, `lineW` 0..1 weight.
+    dict(name="crosshatch",
+         **_two_color("1.0 - hatch"),
+         variables=[("spacing", 8), ("lineW", 0.5)] + _COLVARS,
+         formulas=[("lum", _LUMA01, 0),
+                   ("hatch",
+                    "(lum > 0.8 ? 1.0 : smoothstep(0.0, lineW, abs(sin(PI * y / spacing)))) * "
+                    "(lum > 0.6 ? 1.0 : smoothstep(0.0, lineW, abs(sin(PI * (x + y) * 0.7071 / spacing)))) * "
+                    "(lum > 0.4 ? 1.0 : smoothstep(0.0, lineW, abs(sin(PI * x / spacing)))) * "
+                    "(lum > 0.2 ? 1.0 : smoothstep(0.0, lineW, abs(sin(PI * (x - y) * 0.7071 / spacing))))", 0)]),
+
+    # CRT / VHS look — multiply Front 1 by a scanline darkening (function of y), an RGB
+    # phosphor-triad mask (x mod 3 picks the bright channel), a radial vignette, and an
+    # animated rolling bright bar (KEYFRAME `roll` 0..1 to crawl it up the frame).
+    # `scanDepth`/`maskDepth`/`vignette` 0..1 dial each effect; `scanFreq` = scanline pitch.
+    dict(name="crt",
+         red="r1 * tone * (1.0 - maskDepth * (1.0 - step(mod(floor(x), 3.0), 0.5)))",
+         green="g1 * tone * (1.0 - maskDepth * (1.0 - step(abs(mod(floor(x), 3.0) - 1.0), 0.5)))",
+         blue="b1 * tone * (1.0 - maskDepth * (1.0 - step(2.5, mod(floor(x), 3.0) + 1.0)))",
+         matte="m1",
+         variables=[("scanDepth", 0.3), ("maskDepth", 0.3), ("vignette", 0.4),
+                    ("scanFreq", 1.5), ("roll", ANIM_T1)],
+         formulas=[("vig", "1.0 - vignette * smoothstep(0.4 * height, 0.75 * height, length(vec2(x - width * 0.5, y - height * 0.5)))", 0),
+                   ("bar", "1.0 + 0.4 * smoothstep(0.85, 1.0, cos((y / height - roll) * 2.0 * PI))", 0),
+                   ("tone", "vig * bar * (1.0 - scanDepth * (0.5 + 0.5 * sin(y * scanFreq)))", 0)]),
+
+    # Truchet tiles — per `tile`-px cell, hash the cell (_hash2) to pick one of two diagonal
+    # arc orientations; draw two quarter-circle arcs of width `lineW` centred on opposite
+    # corners so they connect across edges into endless maze/circuit lines. `tp` = cell-
+    # local coords (0..1), `flip` = the hashed orientation, `arc` = px distance to the arcs.
+    dict(name="truchet",
+         **_two_color("1.0 - smoothstep(lineW - 1.5, lineW + 1.5, arc)"),
+         variables=[("tile", 40), ("lineW", 4.0)] + _COLVARS,
+         formulas=[("tp", "mod(vec2(x, y), tile) / tile", 1),
+                   ("flip", f"step(0.5, {_hash2('floor(vec2(x, y) / tile)')}.x)", 0),
+                   ("arc",
+                    "min("
+                    "abs(length(mix(tp, vec2(1.0 - tp.x, tp.y), flip)) - 0.5), "
+                    "abs(length(mix(tp, vec2(1.0 - tp.x, tp.y), flip) - vec2(1.0, 1.0)) - 0.5)) * tile", 0)]),
+
+    # Palette quantize — snap Front 1 to `levels` tonal steps (a clean, budget-friendly
+    # stand-in for an N-colour palette), then tint the result between two palette anchors
+    # via _two_color driven by the quantized luma. Default 4-tone; set the A/B colours to a
+    # dark/light green for the classic Game-Boy palette.
+    dict(name="palette_quantize",
+         red="mix(aR, bR, q)", green="mix(aG, bG, q)", blue="mix(aB, bB, q)", matte="q",
+         variables=[("levels", 4.0)] + _COLVARS,
+         formulas=[("q", f"floor({_LUMA01} * levels) / max(levels - 1.0, 1.0)", 0)]),
+
+    # Seven-segment digit — one SDF 7-segment digit burned into the frame with NO text node.
+    # `digit` 0..9 (KEYFRAME it for a frame counter) lights bars via an arithmetic truth
+    # table; `seg` = union of the lit bars. Drawn at Centre; `digScale` px = vertical half-
+    # size; `thick` = stroke half-width; `hw`/`hh` = bar half-lengths. Two-colour (bg->lit).
+    dict(name="seven_segment",
+         red="mix(0.0, lit, seg)", green="mix(0.05, lit, seg)", blue="mix(0.0, lit, seg)",
+         matte="seg",
+         variables=[("digit", 0.0), ("digScale", 150), ("thick", 0.1),
+                    ("hw", 0.42), ("hh", 0.42), ("lit", 1.0)],
+         formulas=[("p", "vec2(x - centre.x, y - centre.y) / digScale", 1),
+                   ("seg", _seven_seg_expr(), 0)]),
+]
+
 SETUPS = [
     # ST / UV map — feed a warp; red=u, green=v.
     dict(name="stmap",
@@ -842,7 +1028,275 @@ SETUPS = [
          blue="clamp(pow(clamp(m1, 0.0, 1.0), gamma) * gain, 0.0, 1.0)",
          matte="clamp(pow(clamp(m1, 0.0, 1.0), gamma) * gain, 0.0, 1.0)",
          variables=[("gamma", 1.0), ("gain", 1.0)]),
-]
+
+    # --- Escape-time fractals ----------------------------------------------
+    # All three share _fractal_chain (4 vec3 formulas z0..z3, 8 total iterations) and read
+    # the smooth escape value _FRAC_ESCAPE off z3.z. Pan/zoom via node Centre + `zoom`.
+
+    # Mandelbrot — c = pixel, z0 = 0. _two_color palettes the escape value; Matte = raw.
+    dict(name="mandelbrot",
+         **_two_color(_FRAC_ESCAPE),
+         variables=[("zoom", 400.0)] + _COLVARS,
+         formulas=_fractal_chain("vec3(0.0, 0.0, 0.0)", _FRAC_PIX)),
+
+    # Julia — z0 = pixel, c = constant (cRe,cIm). KEYFRAME cRe/cIm to morph. Grayscale.
+    dict(name="julia",
+         **_solid(_FRAC_ESCAPE),
+         variables=[("zoom", 400.0), ("cRe", -0.8), ("cIm", 0.156)],
+         formulas=_fractal_chain(f"vec3({_FRAC_PIX}, 0.0)", "vec2(cRe, cIm)")),
+
+    # Burning Ship — like Mandelbrot but fold z to abs() before each square (abs_z=True).
+    dict(name="burning_ship",
+         **_two_color(_FRAC_ESCAPE),
+         variables=[("zoom", 400.0)] + _COLVARS,
+         formulas=_fractal_chain("vec3(0.0, 0.0, 0.0)", _FRAC_PIX, abs_z=True)),
+
+    # --- ST-map generators (feed a downstream STMap node) ------------------
+
+    # Polar<->cartesian remap. Source U follows the angle around Centre, source V the
+    # normalised radius. 'twist' rotates the angular axis, 'zoom' scales the radius.
+    # Aspect-corrected so the mapping stays circular at any resolution.
+    dict(name="polar_to_cartesian",
+         red="fract((atan(ny, nx) + twist) / (2.0 * PI) + 1.0)",
+         green="clamp(length(vec2(nx, ny)) / zoom, 0.0, 1.0)",
+         blue="0.0", matte="1.0",
+         variables=[("twist", 0.0), ("zoom", 1.0)],
+         formulas=[("nx", "((x + 0.5) / width - 0.5 - centre.x / width) * 2.0", 0),
+                   ("ny", "((y + 0.5) / height - 0.5 - centre.y / height) * 2.0 * (height / width)", 0)]),
+
+    # Kaleidoscope fold — mirror-fold angular space into 'segments' wedges around Centre.
+    # Source UV is reconstructed from the folded angle + original radius, back to 0..1.
+    dict(name="kaleidoscope_map",
+         red="0.5 + cos(fa) * rad",
+         green="0.5 + sin(fa) * rad * (width / height)",
+         blue="0.0", matte="1.0",
+         variables=[("segments", 6.0), ("rot", 0.0)],
+         formulas=[("nx", "((x + 0.5) / width - 0.5 - centre.x / width)", 0),
+                   ("ny", "((y + 0.5) / height - 0.5 - centre.y / height) * (height / width)", 0),
+                   ("rad", "length(vec2(nx, ny))", 0),
+                   ("fa", "abs(mod(atan(ny, nx) + rot, 2.0 * PI / segments) - PI / segments)", 0)]),
+
+    # Lens distort/undistort ST map with anamorphic squeeze. Radial polynomial (k1, k2)
+    # around Centre; 'squeeze' scales X for anamorphic. Negate k1/k2 to invert (undistort).
+    dict(name="lens_distort_map",
+         red="0.5 + centre.x / width + nx * f / squeeze * 0.5",
+         green="0.5 + centre.y / height + ny * f * 0.5 * (width / height)",
+         blue="0.0", matte="1.0",
+         variables=[("k1", 0.1), ("k2", 0.0), ("squeeze", 1.0)],
+         formulas=[("nx", "((x + 0.5) / width - 0.5 - centre.x / width) * 2.0", 0),
+                   ("ny", "((y + 0.5) / height - 0.5 - centre.y / height) * 2.0 * (height / width)", 0),
+                   ("r2v", "nx * nx + ny * ny", 0),
+                   ("f", "1.0 + k1 * r2v + k2 * r2v * r2v", 0)]),
+
+    # Glitch-block ST map — quantise UV into 'blockSize'-pixel blocks, hash each block to a
+    # random offset, scale by 'corruption' (0..1, KEYFRAME to trigger). seed reshuffles.
+    dict(name="glitch_block_map",
+         red="(x + 0.5) / width + (off.x - 0.5) * corruption * 0.2",
+         green="(y + 0.5) / height + (off.y - 0.5) * corruption * 0.05",
+         blue="0.0", matte="1.0",
+         variables=[("blockSize", 64.0), ("corruption", 0.0), ("seed", 0.0)],
+         formulas=[("blk", "floor(vec2(x, y) / blockSize) + seed", 1),
+                   ("off", _hash2("blk"), 1)]),
+
+    # Heat-haze ST map — UV offset from animated 3-octave fbm * 'amp'. KEYFRAME 'seed' to
+    # shimmer. Same fbm field shifted on each axis so X/Y wobble independently.
+    dict(name="heat_haze_map",
+         red="(x + 0.5) / width + (nA - 0.5) * amp",
+         green="(y + 0.5) / height + (nB - 0.5) * amp",
+         blue="0.0", matte="1.0",
+         variables=[("scale", 120.0), ("seed", 0.0),
+                    ("lacunarity", 2.0), ("persistence", 0.5), ("amp", 0.03)],
+         formulas=[("nA", _FBM_NOISE, 0),
+                   ("nB", _vnoise_at("(vec2(x, y) / scale + vec2(seed + 5.2, seed * 1.3 + 1.7))"), 0)]),
+
+    # Circle-of-confusion from depth (NOT a UV map). Depth on Matte 1. Per-pixel blur
+    # radius 0..1 = distance from focusDepth, normalised by focusRange, scaled by maxBlur.
+    dict(name="coc_from_depth",
+         red="clamp(abs(m1 - focusDepth) / focusRange, 0.0, 1.0) * maxBlur",
+         green="clamp(abs(m1 - focusDepth) / focusRange, 0.0, 1.0) * maxBlur",
+         blue="clamp(abs(m1 - focusDepth) / focusRange, 0.0, 1.0) * maxBlur",
+         matte="clamp(abs(m1 - focusDepth) / focusRange, 0.0, 1.0) * maxBlur",
+         variables=[("focusDepth", 5.0), ("focusRange", 5.0), ("maxBlur", 1.0)]),
+
+    # Chromatic-aberration ST map — radial scale that diverges per channel from Centre.
+    # Carries the RED channel's distorted source UV (apply per-channel, see Notes); blue
+    # holds the radial-offset magnitude for a downstream defringe.
+    dict(name="chromatic_aberration_map",
+         red="0.5 + centre.x / width + nx * (1.0 + amount) * 0.5",
+         green="0.5 + centre.y / height + ny * (1.0 + amount) * 0.5 * (width / height)",
+         blue="length(vec2(nx, ny)) * amount",
+         matte="1.0",
+         variables=[("amount", 0.02)],
+         formulas=[("nx", "((x + 0.5) / width - 0.5 - centre.x / width) * 2.0", 0),
+                   ("ny", "((y + 0.5) / height - 0.5 - centre.y / height) * 2.0 * (height / width)", 0)]),
+
+    # === control_surfaces — Front 2 / Matte 2 as a painted control map ===
+
+    # Painted grade — Front 2 is a PAINTED control map: r2 = local exposure,
+    # g2 = local hue shift, b2 = local saturation (all 0.5 = neutral). Exposure
+    # multiplies in linear; sat mixes toward luma; hue uses the luma-preserving
+    # rotation matrix on the exposed/saturated RGB (formula `pr`), angle from g2.
+    # Defaults map a flat 0.5 control map to no change. Matte passes m1 through.
+    dict(name="painted_grade",
+         red="pr.x * (0.299 + 0.701 * c + 0.168 * s) + pr.y * (0.587 - 0.587 * c + 0.330 * s) + pr.z * (0.114 - 0.114 * c - 0.497 * s)",
+         green="pr.x * (0.299 - 0.299 * c - 0.328 * s) + pr.y * (0.587 + 0.413 * c + 0.035 * s) + pr.z * (0.114 - 0.114 * c + 0.292 * s)",
+         blue="pr.x * (0.299 - 0.300 * c + 1.250 * s) + pr.y * (0.587 - 0.588 * c - 1.050 * s) + pr.z * (0.114 + 0.886 * c - 0.203 * s)",
+         matte="m1",
+         variables=[("expRange", 2.0), ("hueRange", 1.0), ("satRange", 1.0)],
+         formulas=[
+             ("c", "cos((g2 - 0.5) * hueRange * 2.0 * PI)", 0),
+             ("s", "sin((g2 - 0.5) * hueRange * 2.0 * PI)", 0),
+             # exposure (linear multiply, r2 about 0.5) then saturation (b2 about 0.5).
+             ("ex", "exp2((r2 - 0.5) * 2.0 * expRange)", 0),
+             ("pr", "mix(vec3(dot(vec3(r1, g1, b1) * ex, vec3(0.2126, 0.7152, 0.0722))), "
+                    "vec3(r1, g1, b1) * ex, 1.0 + (b2 - 0.5) * 2.0 * satRange)", 2),
+         ]),
+
+    # Channel pack — ferry three single-channel signals down ONE connection:
+    # red = Matte 1, green = Matte 2, blue = Front 1 luma. Unpack with channel_unpack.
+    dict(name="channel_pack",
+         red="m1", green="m2", blue=_LUMA, matte="1.0"),
+
+    # Channel unpack — expose a packed RGB (from channel_pack) on Front 1 and route
+    # one channel to the Matte. `pick` 0/1/2 selects r1/g1/b1 for the OutMatte; RGB
+    # passes through unchanged. Selection via step (no arrays).
+    dict(name="channel_unpack",
+         red="r1", green="g1", blue="b1",
+         matte="mix(mix(r1, g1, step(0.5, pick)), b1, step(1.5, pick))",
+         variables=[("pick", 0)]),
+
+    # Dual-output depth — ONE node, TWO products: RGB is a depth-tinted grade of the
+    # beauty (Front 1), while the Matte INDEPENDENTLY keys a depth slab from Matte 1
+    # (m1). matte = smoothstep(near, far, m1). OutMatte needs Matte 1 connected.
+    dict(name="dual_output_depth",
+         red="mix(r1, r1 * tintR, smoothstep(near, far, m1) * strength)",
+         green="mix(g1, g1 * tintG, smoothstep(near, far, m1) * strength)",
+         blue="mix(b1, b1 * tintB, smoothstep(near, far, m1) * strength)",
+         matte="smoothstep(near, far, m1)",
+         variables=[("near", 0.0), ("far", 1.0), ("strength", 0.0),
+                    ("tintR", 0.6), ("tintG", 0.8), ("tintB", 1.4)]),
+
+    # --- Wave 4: optics / physics generators -------------------------------
+    # Analytic physics around the Centre. Animate the keyframed var noted on each
+    # (no time builtin) — scrub frames 1-100. Use DIST for radius, atan() for angle.
+
+    # Thin-film interference — soap-bubble / oil-slick iridescence. The interference
+    # 'phase' grows with radius (DIST) and 'thickness'; fract(phase) picks a spectral
+    # hue via _hue2rgb. Keyframe 'shift' to roll the rainbow. Matte = ring intensity.
+    dict(name="thin_film",
+         red=f"({_hue2rgb('fract(phase)')}).r",
+         green=f"({_hue2rgb('fract(phase)')}).g",
+         blue=f"({_hue2rgb('fract(phase)')}).b",
+         matte="(sin(phase * 2.0 * PI) + 1.0) / 2.0",
+         variables=[("thickness", 1.0), ("scale", 0.004), ("shift", [(1, 0.0), (100, 1.0)])],
+         formulas=[DIST, ("phase", "dist * scale * thickness + shift", 0)]),
+
+    # Wave interference — ripple-tank from two circular point sources. Source A sits at
+    # Centre, source B at offset 'srcX' (px, on X). Each contributes cos(k*distance -
+    # phase); KEYFRAME 'phase' to animate the ripples. Two own vars (two-colour eats 6):
+    # 'srcX' + animated 'phase'; wavelength/amp baked into formula 'k'. Field 0..1.
+    dict(name="wave_interference",
+         **_two_color("clamp((cos(dA * k - phase) + cos(dB * k - phase)) * 0.25 + 0.5, 0.0, 1.0)"),
+         variables=[("srcX", 300.0), ("phase", [(1, 0.0), (100, 12.566)])] + _COLVARS,
+         formulas=[("dA", "length(vec2(x - centre.x, y - centre.y))", 0),
+                   ("dB", "length(vec2(x - centre.x - srcX, y - centre.y))", 0),
+                   ("k", "2.0 * PI / 80.0", 0)]),
+
+    # Moire — two line gratings at slightly different frequency; their beat is the moire.
+    # gA is axis-aligned, gB rotated by a fixed small angle. Two own vars (two-colour eats
+    # 6): freqA + freqB — keep them CLOSE for wide, slow beats. Product -> 0..1 pattern.
+    dict(name="moire",
+         **_two_color("(sin(x * freqA) * sin((x * 0.9992 + y * 0.04) * freqB) + 1.0) / 2.0"),
+         variables=[("freqA", 0.08), ("freqB", 0.085)] + _COLVARS),
+
+    # Starfield — tile space into 'cellSize' cells, hash each cell (_hash2) to place one
+    # star with random brightness; KEYFRAME 'twinkle' to make them pulse (each cell's
+    # hash sets its phase). Stars above 'threshold' only; faint hash tint on RGB.
+    dict(name="starfield",
+         red="star * (0.7 + 0.3 * h.x)",
+         green="star",
+         blue="star * (0.7 + 0.3 * h.y)",
+         matte="star",
+         variables=[("cellSize", 40.0), ("twinkle", [(1, 0.0), (100, 1.0)]),
+                    ("threshold", 0.92), ("brightness", 1.0)],
+         formulas=[("h", _hash2("floor(vec2(x, y) / cellSize)"), 1),
+                   ("d", "length(fract(vec2(x, y) / cellSize) - h)", 0),
+                   ("star", "smoothstep(threshold, 1.0, h.y) * (1.0 - smoothstep(0.0, 0.12, d)) "
+                            "* brightness * (0.4 + 0.6 * (0.5 + 0.5 * sin((twinkle + h.x) * 2.0 * PI)))", 0)]),
+
+    # Radar sweep — a rotating sweep line around Centre. 'sweep' (KEYFRAME 0->2*PI) is the
+    # line angle; brightness decays exponentially BEHIND it (afterglow) by angular gap,
+    # plus faint range rings from DIST. 'glow' default phosphor green.
+    dict(name="radar_sweep",
+         red="sweepLevel * glowR + rings",
+         green="sweepLevel * glowG + rings",
+         blue="sweepLevel * glowB + rings",
+         matte="clamp(sweepLevel + rings, 0.0, 1.0)",
+         variables=[("sweep", [(1, 0.0), (100, 6.283)]), ("decay", 3.0), ("ringFreq", 0.02),
+                    ("glowR", 0.1), ("glowG", 1.0), ("glowB", 0.3)],
+         formulas=[("gap", "mod(sweep - atan(y - centre.y, x - centre.x), 2.0 * PI)", 0),
+                   ("sweepLevel", "exp(-gap * decay)", 0),
+                   ("rings", "0.12 * (0.5 + 0.5 * sin(length(vec2(x - centre.x, y - centre.y)) * ringFreq))", 0)]),
+
+
+    # --- Diagnostics -------------------------------------------------------
+    # Colour-blindness sim — Machado 2009 severity-1.0 matrices. 'type' 0=protan,
+    # 1=deutan, 2=tritan selected by step() weights w (no arrays/loops); 'amount'
+    # blends sim vs original. Output = 3 dot products per channel against w.
+    dict(name="color_blindness",
+         red="mix(r1, dot(vec3(simP.x, simD.x, simT.x), w), amount)",
+         green="mix(g1, dot(vec3(simP.y, simD.y, simT.y), w), amount)",
+         blue="mix(b1, dot(vec3(simP.z, simD.z, simT.z), w), amount)",
+         matte="m1",
+         variables=[("type", 0), ("amount", 1.0)],
+         formulas=[
+             ("w", "vec3(1.0 - step(0.5, type), step(0.5, type) - step(1.5, type), step(1.5, type))", 2),
+             ("simP", "vec3("
+                      "0.152286 * r1 + 1.052583 * g1 - 0.204868 * b1, "
+                      "0.114503 * r1 + 0.786281 * g1 + 0.099216 * b1, "
+                      "-0.003882 * r1 - 0.048116 * g1 + 1.051998 * b1)", 2),
+             ("simD", "vec3("
+                      "0.367322 * r1 + 0.860646 * g1 - 0.227968 * b1, "
+                      "0.280085 * r1 + 0.672501 * g1 + 0.047413 * b1, "
+                      "-0.011820 * r1 + 0.042940 * g1 + 0.968881 * b1)", 2),
+             ("simT", "vec3("
+                      "1.255528 * r1 - 0.076749 * g1 - 0.178779 * b1, "
+                      "-0.078411 * r1 + 0.930809 * g1 + 0.147602 * b1, "
+                      "0.004733 * r1 + 0.691367 * g1 + 0.303900 * b1)", 2),
+         ]),
+
+    # Exposure zebra — diagonal stripes over clipped pixels. Clip detected on the
+    # per-channel max: max(r,g,b) >= hi shows red stripes, <= lo shows blue stripes;
+    # mid passes through. Stripes = sign of sin((x+y)*freq + phase); keyframe 'phase'
+    # to crawl. matte flags the clipped region.
+    dict(name="exposure_zebra",
+         red="over > 0.5 ? mix(r1, 1.0, stripe) : r1",
+         green="(over > 0.5 || under > 0.5) ? mix(g1, 0.0, stripe) : g1",
+         blue="under > 0.5 ? mix(b1, 1.0, stripe) : b1",
+         matte="max(over, under)",
+         variables=[("hi", 1.0), ("lo", 0.0), ("freq", 0.15), ("phase", 0.0)],
+         formulas=[
+             ("chmax", "max(max(r1, g1), b1)", 0),
+             ("over", "step(hi, chmax)", 0),
+             ("under", "step(chmax, lo)", 0),
+             ("stripe", "step(0.0, sin((x + y) * freq + phase))", 0),
+         ]),
+
+    # Gamut clip — flag illegal pixels. Any channel < 0 (negative light) tinted
+    # magenta (1,0,1); any channel > 'ceiling' tinted yellow (1,1,0); in-range passes
+    # through (negative wins over over-ceiling). 'tint' 0..1 blends the warning colour
+    # over the pixel. matte = the out-of-gamut mask (union of negative OR over-ceiling).
+    dict(name="gamut_clip",
+         red="neg > 0.5 ? mix(r1, 1.0, tint) : (over > 0.5 ? mix(r1, 1.0, tint) : r1)",
+         green="neg > 0.5 ? mix(g1, 0.0, tint) : (over > 0.5 ? mix(g1, 1.0, tint) : g1)",
+         blue="neg > 0.5 ? mix(b1, 1.0, tint) : (over > 0.5 ? mix(b1, 0.0, tint) : b1)",
+         matte="max(neg, over)",
+         variables=[("ceiling", 1.0), ("tint", 1.0)],
+         formulas=[
+             ("neg", "1.0 - step(0.0, min(min(r1, g1), b1))", 0),
+             ("over", "step(ceiling, max(max(r1, g1), b1))", 0),
+         ]),
+] + _STYLIZATION
 
 # Organise outputs into subfolders by use.
 CATEGORY = {
@@ -929,6 +1383,41 @@ CATEGORY = {
     # Utility / technical
     "stmap": "utility",
     "nan_cleanup": "utility",
+    # Escape-time fractals
+    "mandelbrot": "fractals",
+    "julia": "fractals",
+    "burning_ship": "fractals",
+    # ST-map generators (feed a downstream STMap node)
+    "polar_to_cartesian": "stmap_generators",
+    "kaleidoscope_map": "stmap_generators",
+    "lens_distort_map": "stmap_generators",
+    "glitch_block_map": "stmap_generators",
+    "heat_haze_map": "stmap_generators",
+    "coc_from_depth": "stmap_generators",
+    "chromatic_aberration_map": "stmap_generators",
+    # Control surfaces (Front 2 / Matte 2 as a painted control map)
+    "painted_grade": "control_surfaces",
+    "channel_pack": "control_surfaces",
+    "channel_unpack": "control_surfaces",
+    "dual_output_depth": "control_surfaces",
+    # Stylization (per-pixel looks)
+    "halftone": "stylization",
+    "bayer_dither": "stylization",
+    "crosshatch": "stylization",
+    "crt": "stylization",
+    "truchet": "stylization",
+    "palette_quantize": "stylization",
+    "seven_segment": "stylization",
+    # Optics / physics generators
+    "thin_film": "optics_physics",
+    "wave_interference": "optics_physics",
+    "moire": "optics_physics",
+    "starfield": "optics_physics",
+    "radar_sweep": "optics_physics",
+    # Diagnostics
+    "color_blindness": "diagnostics",
+    "exposure_zebra": "diagnostics",
+    "gamut_clip": "diagnostics",
 }
 
 # Per-setup documentation: what it does + when to use it + inputs.
@@ -1182,6 +1671,105 @@ DOCS = {
     "linear_to_srgb": ("Exact piecewise linear → sRGB encode.",
                        "Re-encode to sRGB for display/output after linear work.",
                        "Front 1"),
+    # fractals  (8-iteration escape-time; pan/zoom via node Centre + `zoom`)
+    "mandelbrot": ("Escape-time Mandelbrot set; 0..1 smooth escape value palette-mapped (aR..bB).",
+                   "Procedural fractal texture/matte; abstract background or displacement source.",
+                   "none"),
+    "julia": ("Escape-time Julia set; constant `cRe`/`cIm` picks the shape (keyframe to morph). Grayscale.",
+              "Animated organic fractal element; morphing background or matte.",
+              "none"),
+    "burning_ship": ("Burning Ship fractal (abs-folded squaring); palette-mapped escape value.",
+                     "Sharp, ship-like procedural fractal texture/matte.",
+                     "none"),
+    # stmap_generators
+    "polar_to_cartesian": ("Polar/rectangular ST map around Centre; `twist` rotates, `zoom` scales radius.",
+                           "Tiny-planet, mirror-ball and 360 reframes — feed an STMap node.",
+                           "none (generator → STMap)"),
+    "kaleidoscope_map": ("Mirror-folds angular space into `segments` wedges around Centre; `rot` spins it.",
+                         "Kaleidoscope / mirror-symmetry looks — feed an STMap node.",
+                         "none (generator → STMap)"),
+    "lens_distort_map": ("Radial barrel/pincushion ST map (`k1`,`k2`) with anamorphic `squeeze` around Centre.",
+                         "Add or (negate k1/k2 to) remove lens distortion — feed an STMap node.",
+                         "none (generator → STMap)"),
+    "glitch_block_map": ("Block-shuffle ST map; hashes `blockSize` blocks and offsets them by `corruption`.",
+                         "Datamosh / block-glitch — keyframe `corruption` to trigger, feed an STMap node.",
+                         "none (generator → STMap)"),
+    "heat_haze_map": ("fbm-driven UV-offset ST map; `amp` strength, keyframe `seed` to shimmer.",
+                      "Heat-haze / refraction wobble — feed an STMap node.",
+                      "none (generator → STMap)"),
+    "coc_from_depth": ("Per-pixel circle-of-confusion radius (0..1) from depth on Matte 1; `focusDepth/Range`, `maxBlur`.",
+                       "Drive a variable-blur/Defocus node's blur-amount map for depth-of-field.",
+                       "Matte 1 (depth)"),
+    "chromatic_aberration_map": ("Radial per-channel ST map (red channel's UV) + blue = offset magnitude; `amount`.",
+                                 "Lens chromatic aberration / defringe — feed an STMap node (see Notes).",
+                                 "none (generator → STMap)"),
+    # control_surfaces
+    "painted_grade": ("Grades Front 1 using a PAINTED Front 2 control map: r2 = local exposure, "
+                      "g2 = local hue shift, b2 = local saturation (0.5 = neutral on each).",
+                      "Paint a soft control map (in Paint/roto/another Pixel Expression) to drive "
+                      "exposure/hue/sat that vary across the frame from one node — no tracked mattes.",
+                      "Front 1 (image) + Front 2 (control map); Matte 1 optional (passes through)"),
+    "channel_pack": ("Packs three single-channel signals into one RGB: red = Matte 1, green = Matte 2, "
+                     "blue = Front 1 luma; matte = 1.",
+                     "Ferry three mattes/masks down a single connection through a comp; unpack later with channel_unpack.",
+                     "Matte 1 + Matte 2 + Front 1"),
+    "channel_unpack": ("Passes a packed RGB (from channel_pack) through unchanged and routes one channel "
+                       "to the Matte: `pick` 0/1/2 selects r1/g1/b1.",
+                       "Recover a packed mask and send it to OutMatte at the destination; pairs with channel_pack.",
+                       "Front 1 (the packed RGB)"),
+    "dual_output_depth": ("ONE node, TWO products: RGB is a depth-tinted grade of the beauty (Front 1) while "
+                          "the Matte independently keys a depth slab via smoothstep(near, far, m1).",
+                          "Tint the beauty by depth AND export a depth-slab matte from the same node — e.g. an "
+                          "atmosphere look plus a holdout for the mid-ground.",
+                          "Front 1 (beauty) + Matte 1 (depth)"),
+    # stylization
+    "halftone": ("Newspaper halftone: tiles the frame into `cell`-px cells (rotatable by `angle`) and draws a dot per cell whose size grows with that cell's luma.",
+                 "Print/comic look, retro screen-print stylisation, animated dot-screen transitions.",
+                 "Front 1"),
+    "bayer_dither": ("Ordered 4x4 Bayer dithering: posterizes Front 1's luma to `levels` steps with a dispersed-dot threshold matrix for that crunchy retro 1-bit look.",
+                     "Game-Boy / EGA / e-ink stylisation, retro UI, stippled gradients without banding.",
+                     "Front 1"),
+    "crosshatch": ("Pen crosshatch: 0/45/90/135-degree line sets switch on as luma darkens through four thresholds (darker = more hatch directions).",
+                   "Ink-illustration / engraving look, sketch stylisation, comic shading.",
+                   "Front 1"),
+    "crt": ("CRT/VHS look: scanlines, an RGB phosphor-triad mask, a vignette, and an animated rolling bright bar (keyframe `roll`) multiplied over Front 1.",
+            "Retro-monitor / broadcast-glitch stylisation, in-screen TV inserts, music-video grunge.",
+            "Front 1 (+ Matte 1 to pass alpha)"),
+    "truchet": ("Truchet tiles: each `tile`-px cell is hashed to one of two diagonal arc orientations; the quarter-circle arcs connect across edges into endless maze/circuit lines.",
+                "Procedural maze/circuit/pipe textures, generative backgrounds, motion-graphics fills.",
+                "none (procedural; ignores Front)"),
+    "palette_quantize": ("Snaps Front 1 to `levels` tonal steps and tints the result between two palette anchor colours (default 4-tone; set the colours for a Game-Boy green ramp).",
+                         "Limited-palette / pixel-art stylisation, duotone posterise, retro console look.",
+                         "Front 1"),
+    "seven_segment": ("Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node. Keyframe `digit` for a frame counter.",
+                      "On-screen counters/timers/HUD numerals, retro display overlays, datamosh captions.",
+                      "none (generator; composite over your plate)"),
+    # optics_physics
+    "thin_film": ("Thin-film interference iridescence: a soap-bubble/oil-slick rainbow whose hue tracks an interference phase that grows with radius and `thickness`; animate `shift` to roll the colours.",
+                  "Iridescent oil-slick/soap-bubble looks, holographic foil, fuel-rainbow sheens.",
+                  "none (uses Centre)"),
+    "wave_interference": ("Ripple-tank interference of two circular point sources (Centre + `srcX` offset); animate `phase` to make the ripples travel.",
+                          "Caustics/ripple references, sonar-style interference, energy-field FX.",
+                          "none (uses Centre)"),
+    "moire": ("Beat pattern of two near-identical line gratings (`freqA` vs `freqB`) — an intentional moiré.",
+              "Interference/aliasing FX, hypnotic op-art, screen/CRT artefacts.",
+              "none"),
+    "starfield": ("Procedural stars: space is tiled into `cellSize` cells, each hashed to place one star above `threshold`; animate `twinkle` to pulse them.",
+                  "Star backgrounds, sparkle/glint fields, sci-fi skies.",
+                  "none"),
+    "radar_sweep": ("Rotating radar/oscilloscope sweep around Centre with an exponential afterglow trailing behind the line, plus faint range rings; animate `sweep` 0→2π.",
+                    "Radar/sonar HUDs, sci-fi scanner overlays, oscilloscope looks.",
+                    "none (uses Centre)"),
+    # diagnostics
+    "color_blindness": ("Simulates colour-vision deficiency on Front 1 (Machado 2009 severity-1.0 matrix). `type` 0=protan / 1=deutan / 2=tritan; `amount` blends sim vs original.",
+                        "Check that comp/graphics read for colour-blind viewers (accessibility QC).",
+                        "Front 1 (+ Matte 1 to pass alpha)"),
+    "exposure_zebra": ("Overlays animated diagonal stripes on clipped pixels: per-channel max >= `hi` shows red stripes, <= `lo` shows blue stripes; mid passes through. Keyframe `phase` to crawl the stripes.",
+                       "Spot blown highlights and crushed blacks at a glance, like a camera zebra.",
+                       "Front 1 (+ Matte 1 to render OutMatte)"),
+    "gamut_clip": ("Flags illegal pixels: any channel < 0 tinted magenta, any channel > `ceiling` tinted yellow; in-range passes through. `tint` sets warning opacity.",
+                   "Catch negative light and over-range values produced by grades, transforms or matrices.",
+                   "Front 1 (+ Matte 1 to render OutMatte)"),
 }
 
 
@@ -1256,6 +1844,33 @@ EXPECTS = {
     "matte_subtract": _ANY, "matte_xor": _ANY, "matte_invert": _ANY, "matte_grade": _ANY,
     # utility
     "stmap": _STMAP, "nan_cleanup": _ANY,
+    # fractals
+    "mandelbrot": _GEN, "julia": _GEN, "burning_ship": _GEN,
+    # stmap_generators
+    "polar_to_cartesian": _STMAP, "kaleidoscope_map": _STMAP,
+    "lens_distort_map": _STMAP, "glitch_block_map": _STMAP,
+    "heat_haze_map": _STMAP, "chromatic_aberration_map": _STMAP,
+    "coc_from_depth": "depth raw in; outputs a 0..1 blur-amount map (Raw/Data)",
+    # control_surfaces
+    "painted_grade": "Front 1 in your grading/scene-linear space; Front 2 is a 0..1 data control map",
+    "channel_pack": "any (the three packed signals are data — tag the output Raw/Data)",
+    "channel_unpack": "any (operates on the channels as data)",
+    "dual_output_depth": "depth raw on Matte 1; beauty in your working/scene-linear space",
+    # stylization
+    "halftone": "display-referred / working image (luma-driven look)",
+    "bayer_dither": "display-referred / working image (luma-driven look)",
+    "crosshatch": "display-referred / working image (luma-driven look)",
+    "crt": "display-referred / working image (look applied multiplicatively)",
+    "truchet": _GEN,
+    "palette_quantize": "display-referred / working image (luma-driven look)",
+    "seven_segment": _GEN,
+    # optics_physics
+    "thin_film": _GEN, "wave_interference": _GEN, "moire": _GEN,
+    "starfield": _GEN, "radar_sweep": _GEN,
+    # diagnostics
+    "color_blindness": "display-referred sRGB-ish (the Machado 2009 matrices are fit for sRGB display values)",
+    "exposure_zebra": "scene-linear / your working space (clip thresholds hi=1.0, lo=0.0 assume normalised values)",
+    "gamut_clip": "scene-linear / your working space (negative + over-ceiling detection on raw channel values)",
 }
 
 
@@ -2560,6 +3175,735 @@ saturation clears `satMin`, black elsewhere. Written to RGB **and** the Matte.
 ### Practical notes
 - This is the **`dHue`-only special case** of `hsl_targeted` (which also gives saturation and
   value). Reach for it when you just need a clean hue swap on one object.
+""",
+    # --- fractals ---
+    "mandelbrot": """
+## Notes
+
+A real **escape-time Mandelbrot** computed per pixel — but a deliberately **shallow,
+experimental** one, not a deep-zoom renderer. Read the architecture note below before you
+judge the image.
+
+### Why it's shallow (the architecture limit)
+The node has **no reassignable state** — you can't write a loop that updates `z`. The only
+way to iterate is the **4-formula chain**: `z0` does a couple of inlined steps from the
+seed, `z1` references `z0` by name and does a couple more, … through `z3`. A complex square
+references `z` several times, so each inlined step **expands the expression text by ~8x**.
+That caps us at **2 iterations per formula = 8 total** before the string blows past the
+node's practical size limit (K=3 would be ~33 KB per formula). So:
+- **Interiors read solid** (they never escape in 8 iterations).
+- **Edges band** in a few discrete rings rather than the infinitely fine filigree you'd get
+  from hundreds of iterations.
+- This is a **texture/abstract-pattern** tool, not a fractal explorer.
+
+### How it works
+Each pixel maps to the complex plane relative to the node **Centre**, scaled by `zoom`
+(bigger `zoom` = closer). `c` = that coordinate, `z` starts at 0. Every iteration squares
+`z` and adds `c`, and accumulates `step(|z|^2, 4.0)` — 1 while still inside the bailout
+radius, 0 once it escapes. Summing across all 8 iterations gives a 0..1 **smooth escape
+value** (`z3.z / 20.0`, normalised to the *maximum possible* count so the tonal range stays
+stable even though only 8 steps run).
+
+### Pan / zoom
+- **Pan:** move the node **Centre** to the region you want centred.
+- **Zoom:** raise `zoom` (default 400). Because iteration depth is fixed at 8, zooming in
+  past a point just shows bigger, smoother bands — there's no new detail to reveal.
+
+### Colour
+The escape value is palette-mapped through `_two_color` (`aR/aG/aB` → `bR/bG/bB`, default
+black→white). Set the two colours for a duotone fractal; the **Matte** holds the raw 0..1
+escape value for masking. The classic black-interior / coloured-exterior look is the default.
+
+### Downstream
+Pure generator (no inputs). Feed the Matte into a comp as a procedural mask, or the RGB as a
+background / displacement source. Pair with a **Blur** if the discrete bands read too hard.
+""",
+    "julia": """
+## Notes
+
+The **Julia** companion to `mandelbrot`: same 8-iteration escape-time engine, but `z`
+**starts at the pixel** and `c` is a **constant** you control with `cRe`/`cIm`. Sweeping
+that constant morphs the whole shape — which is the fun part.
+
+### The morph (keyframe `cRe`/`cIm`)
+`cRe`/`cIm` is a point in the complex plane; each value gives a different Julia set.
+**Keyframe them** to animate a continuously-morphing fractal. Good values to try:
+| `cRe` | `cIm` | Look |
+|-------|-------|------|
+| -0.8 | 0.156 | default — connected, dragon-ish |
+| -0.4 | 0.6 | spiral arms |
+| 0.285 | 0.01 | dense, near-circular |
+| -0.70176 | -0.3842 | classic "rabbit" |
+| -0.835 | -0.2321 | lightning / dendrite |
+
+Animate a small loop (e.g. `cRe` -0.8→-0.7→-0.8 over 100 frames) for a breathing morph.
+
+### Same shallow caveat
+Like `mandelbrot`, this is **8 total iterations** (the 4-formula chain expands ~8x per
+inlined step, so deeper is impractical). Interiors read solid; edges band. It's a
+texture/animation tool, not a deep renderer.
+
+### Output
+**Grayscale** — the raw 0..1 escape value written to RGB **and** Matte (via `_solid`, to
+stay within the variable budget alongside `cRe`/`cIm`). Tint it downstream, or drive a mask
+from the Matte. Pan/zoom via node **Centre** + `zoom` exactly as in `mandelbrot`.
+""",
+    "burning_ship": """
+## Notes
+
+The **Burning Ship** fractal — `mandelbrot` with one change: **fold `z` to its absolute
+value on each axis before squaring** (`z = vec2(abs(z.x), abs(z.y))`, then square, `+ c`).
+That broken symmetry gives the sharp, hull-and-mast "ship" silhouette the name comes from.
+
+### Same engine, same caveats
+8-iteration escape-time over the 4-formula chain (each inlined step expands ~8x, so 2 per
+formula is the ceiling). **Shallow and experimental** — interiors solid, edges band; a
+texture tool, not a deep-zoom explorer. Pan/zoom via node **Centre** + `zoom`.
+
+### Where the ship is
+The famous structure sits down in the **negative-imaginary** region. To frame it, move the
+node **Centre** below/left of the origin and raise `zoom`. Because depth is fixed at 8, the
+fine antenna detail of real Burning Ship renders won't appear — you get the bold outline.
+
+### Colour / downstream
+Escape value palette-mapped through `_two_color` (default black→white); **Matte** = raw 0..1
+escape for masking. Identical workflow to `mandelbrot`. Blur downstream if the bands read
+too hard.
+""",
+    # --- stmap ---
+    "polar_to_cartesian": """
+## Notes
+
+A **polar-coordinate ST map**. It does **not** warp the image itself — `red = U, green = V`,
+and you feed the result into a downstream **STMap node** (or an **Action ST-map / GMIC ST**)
+whose source is the plate you want remapped. Output is tagged **Raw/Data**.
+
+### Required downstream wiring
+1. This node → **STMap node**, plugged into the STMap's **map / UV input**.
+2. The plate to remap → the STMap's **front / source input**.
+3. The STMap resamples the source at each pixel's `(U,V)` = `(red, green)` here.
+
+### What it does
+For every output pixel it computes a **source UV from (angle, radius)** measured around the
+node **Centre** (drag Centre to set the pole). `red` carries the normalised angle (0..1 around
+the circle), `green` the normalised radius. The result is the classic **tiny-planet /
+mirror-ball / 360-reframe** unwrap-rewrap.
+
+### Controls
+- **`twist`** rotates the angular axis (radians) — spins the planet.
+- **`zoom`** scales the radius — `>1` pulls the horizon in, `<1` pushes it out.
+- Aspect-corrected (Y normalised by height/width) so the circle stays round at any res.
+""",
+    "kaleidoscope_map": """
+## Notes
+
+A **kaleidoscope ST map** — `red = U, green = V` feeding a downstream **STMap node** (this node
+into the STMap's **map/UV input**, the plate into its **source input**). Output tagged
+**Raw/Data**.
+
+### What it does
+Mirror-folds angular space into **`segments`** wedges around the node **Centre**, then
+reconstructs a source UV from the folded angle + original radius. The STMap then samples your
+plate through that folded coordinate field, giving the mirror-symmetry kaleidoscope look.
+
+### Controls
+- **`segments`** = number of mirrored wedges (6 default).
+- **`rot`** = rotation of the fold (radians) — spin it for an animated kaleidoscope.
+- Drag **Centre** to move the pivot. Keyframe `rot` for motion.
+""",
+    "lens_distort_map": """
+## Notes
+
+A **radial lens-distortion ST map** with anamorphic squeeze. `red = U, green = V`; feed it to a
+downstream **STMap node** (this node → STMap **map/UV input**, plate → STMap **source input**).
+Output tagged **Raw/Data** — colour-managing a coordinate map corrupts it.
+
+### Distort vs undistort (same node)
+- **`k1` is the main term:** `k1 > 0` = pincushion, `k1 < 0` = barrel. `k2` is the higher-order
+  corner term.
+- **To UNDISTORT, negate `k1` and `k2`** (use the opposite sign of the values you'd use to add
+  the distortion). It's an approximation, so a distort→undistort round-trip won't be
+  pixel-exact — match coefficients carefully and check on a grid.
+
+### Controls
+- **`squeeze`** = anamorphic X scale (2.0 = a 2x squeeze). Use Centre to set the optical centre.
+- Aspect-corrected so distortion stays isotropic at any resolution.
+
+### Typical job
+Add a plate's measured distortion onto a clean CG render so it matches, or flatten a plate
+(undistort), track/paint/comp, then re-distort with the same node negated.
+""",
+    "glitch_block_map": """
+## Notes
+
+A **block-shuffle / datamosh ST map** — `red = U, green = V` feeding a downstream **STMap node**
+(this node → STMap **map/UV input**, plate → STMap **source input**). Output tagged **Raw/Data**.
+
+### What it does
+Quantises the frame into **`blockSize`-pixel blocks**, hashes each block's index to a random
+2D offset (via the shared `_hash2` helper), and shifts that whole block's source UV by the hash
+scaled by **`corruption`**. Each block jumps as a unit, so the STMap tears the plate into
+displaced rectangles — a corrupted-codec / datamosh look.
+
+### Controls
+- **`corruption`** 0..1 — the trigger. **Keyframe it** (e.g. 0 → 0.8 → 0 over a few frames) so
+  the glitch pops in and out; at 0 the map is identity (no displacement).
+- **`blockSize`** = block size in pixels (smaller = finer shredding).
+- **`seed`** reshuffles which way each block jumps — keyframe it to re-randomise per frame.
+""",
+    "heat_haze_map": """
+## Notes
+
+A **heat-haze / refraction ST map** — `red = U, green = V` feeding a downstream **STMap node**
+(this node → STMap **map/UV input**, plate → STMap **source input**). Output tagged **Raw/Data**.
+
+### What it does
+Offsets each pixel's source UV by an **animated 3-octave fbm** field (the shared `_FBM_NOISE`
+builder) times **`amp`**. X and Y use the same noise field sampled at different offsets, so they
+wobble independently — the organic shimmer of hot air or water refraction.
+
+### Controls
+- **`seed`** — **keyframe this to animate the shimmer** (the node has no time variable; the seed
+  offset into the noise field is how you get motion).
+- **`amp`** = displacement strength (UV units; 0.03 default ≈ a few percent of the frame).
+- **`scale`** = feature size, **`lacunarity`**/**`persistence`** shape the fbm octaves.
+""",
+    "coc_from_depth": """
+## Notes
+
+**NOT a UV map** — this outputs a **per-pixel circle-of-confusion (blur-amount) map**, written
+to RGB **and** the Matte. Depth arrives on **Matte 1 (`m1`)** per the library convention.
+
+### Required downstream wiring
+Feed this into a **variable-blur / Defocus / depth-of-field node** as its **blur-amount input**
+(the map that says how much to blur each pixel). The blur node does the gathering — this node
+only computes the amount (no neighbour sampling is possible here).
+
+### What it does
+`coc = clamp(abs(m1 - focusDepth) / focusRange, 0, 1) * maxBlur`. Pixels at `focusDepth` get 0
+(sharp); blur ramps up with distance from the focus plane, reaching `maxBlur` at the edge of
+`focusRange`.
+
+### Controls
+- **`focusDepth`** = the depth value held in focus (match your depth pass's units/scale).
+- **`focusRange`** = how far from focus before reaching max blur.
+- **`maxBlur`** = output scale (0..1) — set so it matches your blur node's expected amount range.
+- Tag the output **Raw/Data** (it's a control map, not an image).
+""",
+    "chromatic_aberration_map": """
+## Notes
+
+A **chromatic-aberration ST map** — `red = U, green = V` for a downstream **STMap node**. Output
+tagged **Raw/Data**.
+
+### The one-map limitation (read this)
+A single ST map can only carry **one** source UV, but chromatic aberration needs the R/G/B
+channels sampled at **different** radii. Two clean ways to wire it:
+
+1. **Per-channel (most accurate):** this map carries the **red channel's** distorted UV (scaled
+   by `1 + amount`). Build **green** with `amount = 0` (identity) and **blue** with `-amount`,
+   STMap each colour channel of the plate separately, then recombine — R sampled wide, B sampled
+   tight. Three instances of this node, one STMap per channel, one Channel-recombine.
+2. **Magnitude-driven defringe (simplest):** ignore the per-channel UVs and use the **blue
+   channel** here, which carries the **radial offset magnitude** (`length(n) * amount`). Feed
+   that as the strength/mask input of a downstream **defringe / lateral-CA** node so it fringes
+   strongest at the edges and zero at the optical centre.
+
+### Controls
+- **`amount`** = radial divergence (0.02 default). Use **Centre** as the optical centre.
+""",
+    # --- control ---
+    "painted_grade": """
+## Notes
+
+A grade whose **parameters are painted, not global**. The usual grade node has one exposure,
+one hue, one saturation for the whole frame; here those three knobs live in **Front 2** and
+can differ at every pixel. It's a hand-authored control surface — a *spatially-varying* grade
+from a single node, with no tracked mattes or stacked secondaries.
+
+### Paint the control map
+Build Front 2 in Paint, roto, a ramp, or another Pixel Expression. Each channel is a
+**0..1 control, 0.5 = neutral**:
+- **red (r2)** → local **exposure**: 0.5 = no change, >0.5 brightens, <0.5 darkens (`exp2`,
+  so it's symmetric in stops). `expRange` sets the stops at the 0/1 extremes.
+- **green (g2)** → local **hue shift**: 0.5 = no rotation; the rotation is luma-preserving
+  (same matrix as `hue_rotate`), so it won't change brightness. `hueRange` = full turns at the
+  extremes.
+- **blue (b2)** → local **saturation**: 0.5 = no change, 1.0 = more vivid, 0.0 = toward grey
+  (mix around Rec.709 luma). `satRange` scales the push.
+
+A **flat 0.5 grey** Front 2 (or no paint) leaves the image untouched — defaults are neutral.
+
+### Order of operations
+Exposure first (linear multiply), then saturation, then the hue rotation on the result
+(formula `pr`). Work in **scene-linear** so the exposure stops are photometric.
+
+### Recipes
+- **Localised relight:** paint a soft white blob on r2 over a face to lift just that area.
+- **Selective desaturation:** paint b2 dark over a distracting background to grey it down while
+  the hero stays saturated.
+- **Animated reveal:** keyframe / animate the painted map upstream to sweep a grade across the
+  frame.
+""",
+    "channel_pack": """
+## Notes
+
+A **3-into-1 muxer**: stuff three unrelated single-channel signals into one RGB so they ride a
+single connection through a comp, then split them back out with `channel_unpack` at the far
+end. Saves wiring and keeps related masks travelling together.
+
+### The packing
+- **red** = Matte 1, **green** = Matte 2, **blue** = Front 1 **luma** (Rec.709). Matte = 1.
+- Blue is luma rather than a raw channel so the third slot can carry a brightness/key signal;
+  swap it for `b1` in `generate_setups.py` if you'd rather ferry a literal blue channel.
+
+### Practical notes
+- The packed channels are **data, not colour** — tag the output **Raw/Data** so colour
+  management doesn't bend the values before you unpack them.
+- Unpack partner: **`channel_unpack`** (route any packed channel to a Matte). Keep both ends in
+  the same space/data tag.
+""",
+    "channel_unpack": """
+## Notes
+
+The **demuxer** for `channel_pack` (or any packed RGB). It passes the full RGB through
+untouched and additionally **routes one chosen channel to the OutMatte**, so you can recover a
+ferried mask and feed it straight to a downstream matte input.
+
+### Picking the channel
+`pick` selects which channel goes to the Matte: **0 = red, 1 = green, 2 = blue**. It's a
+branchless `step`/`mix` select (no arrays in GLSL): `step(0.5, pick)` switches r→g, then
+`step(1.5, pick)` switches that→b.
+
+### Practical notes
+- RGB out = RGB in, so this is non-destructive on the image; it only *derives* the Matte.
+- **OutMatte only renders when Matte 1 is connected** — the Matte expression here reads Front 1,
+  but Flame still requires Matte 1 wired for the OutMatte to appear. Connect anything (even the
+  packed clip) to Matte 1.
+- Pairs with **`channel_pack`**; keep the Raw/Data tag consistent across the pair.
+""",
+    "dual_output_depth": """
+## Notes
+
+A demonstration that the node makes **two products at once**: the RGB expression and the Matte
+expression are independent. Here RGB carries a **depth-tinted beauty look** while the Matte
+**keys a depth slab** from the same depth pass — one node, a graded image *and* a holdout
+matte.
+
+### The two outputs
+- **RGB:** the beauty (Front 1) blended toward a tint (`tintR/G/B`) by depth, strength
+  `strength`. Default `strength = 0.0` leaves the beauty untouched, so the look is opt-in.
+- **Matte:** `smoothstep(near, far, m1)` — a soft 0..1 isolation of the depth range between
+  `near` and `far`. This is computed **independently** of the RGB grade.
+
+### Practical notes
+- **Front 1 = beauty, Matte 1 = depth.** `near`/`far` are in the depth pass's own units (raw),
+  so read them off your depth values; the tint is in your beauty's space.
+- **OutMatte only renders when Matte 1 is connected** — which it must be here anyway, since the
+  key reads `m1`.
+- Swap `near`/`far` (or feed `1 - smoothstep`) to isolate *outside* the slab instead.
+""",
+    # --- styliz ---
+    "halftone": """
+## Notes
+
+The classic **newspaper / comic dot-screen**. The frame is tiled into a regular grid of
+`cell`-pixel squares; in each cell a single dot is drawn whose radius grows with that
+region's brightness — bright areas pack big overlapping dots (reads as light), dark areas
+shrink to tiny dots (reads as dark). Output is two-colour, defaulting to black ink on white
+paper.
+
+### How it works
+1. Pixel coordinates are rotated by `angle` (radians) so the dot grid can sit at the
+   traditional ~15-45 degree screen angle instead of square-on.
+2. `mod(coords, cell)` folds everything into one cell; the dot is the SDF of a circle whose
+   radius is `0.5 * cell * sqrt(luma)` (the `sqrt` makes dot *area* roughly linear in luma,
+   which is what print actually does).
+3. A soft threshold of that SDF gives the inked pixel, then `_two_color` maps it from paper
+   (`aR/aG/aB`, default black... wait — see below) to ink.
+
+### Controls
+- `cell` — dot pitch in pixels. Smaller = finer screen.
+- `angle` — screen rotation in radians (~0.4 ≈ 23 deg is a good print angle).
+- `aR/aG/aB` (ink) and `bR/bG/bB` (paper) — the two tones. Default is ink black / paper
+  white; swap them or set a colour for duotone (e.g. ink = deep blue on cream paper).
+
+### Recipes
+- **Comic halftone:** `cell` 6-10, `angle` 0.4, leave colours black/white.
+- **Pop-art duotone:** set ink to a saturated magenta and paper to pale yellow.
+- **Animated reveal:** keyframe `cell` from large to 1 to dissolve the dot-screen into the
+  full image.
+
+### Notes
+- Expects a **display-referred / working image** — it shades by Rec.709 luma, so feed it the
+  graded look, not scene-linear, or the dots will skew toward the highlights.
+""",
+    "bayer_dither": """
+## Notes
+
+**Ordered (Bayer) dithering** — the retro 1-bit / limited-palette look where smooth
+gradients are rendered as a fixed cross-hatch of dots instead of solid tones. Unlike random
+dithering it uses a deterministic 4x4 threshold matrix, so it's stable frame-to-frame (no
+crawling grain) and gives that unmistakable EGA / Game-Boy / e-ink texture.
+
+### How it works
+The 4x4 Bayer matrix is built by **index math, not a lookup table or loop**: the threshold
+for a pixel is the bit-interleave of the low two bits of its x and y coordinates, scaled to
+0..1 (`bv`). The pixel's luma is then quantized to `levels` steps *with that threshold added
+in* before flooring — so neighbouring pixels tip over the step boundary at staggered
+brightnesses, and the eye blends them into intermediate tones.
+
+### Controls
+- `levels` — number of output tones. `2.0` = pure 1-bit black/white (the iconic look);
+  `3.0`-`4.0` gives a few grey steps with the dither filling the gaps.
+- `aR..bB` — the two palette anchors the quantized value is mixed between (default
+  black->white). Set them for a tinted duotone.
+
+### Notes
+- Expects a **display-referred / working image** (luma-driven). Set your contrast/exposure
+  *before* this node — dithering is a final stylise, applied to the look you want crunched.
+- For a chunkier dither, scale the image down, apply this, then scale back up (the node has
+  no neighbour access, so it always dithers at native pixel pitch).
+""",
+    "crosshatch": """
+## Notes
+
+**Pen-and-ink crosshatch shading.** As a region darkens it accumulates more sets of
+parallel lines — first one direction, then a second crossing it, then a third and fourth —
+exactly how an illustrator builds up tone with a pen. The result is ink-on-paper line art
+driven entirely by the image's luminance.
+
+### How it works
+Four line fields at **0, 45, 90 and 135 degrees** are generated with `sin` of the
+(rotated) coordinates. Each field is gated by a luma threshold: lines at 0 deg appear once
+luma drops below 0.8, the 45-deg set joins below 0.6, 90 deg below 0.4, 135 deg below 0.2.
+The lit fields are multiplied together (a line in *any* active direction = ink), so darker
+pixels are crossed by progressively more hatching.
+
+### Controls
+- `spacing` — pixels between hatch lines. Smaller = finer, denser pen.
+- `lineW` — 0..1 line weight / softness (how fat each stroke is relative to the gap).
+- `aR..bB` — ink and paper colours (default black ink on white paper).
+
+### Notes
+- Expects a **display-referred / working image** — the four thresholds (0.8/0.6/0.4/0.2)
+  assume a roughly 0..1 display range. If your image is linear or log, run an exposure /
+  view transform first so the tones land where the thresholds expect them.
+- Great over a high-contrast, slightly blurred version of the plate — fine detail otherwise
+  fights the hatch lines.
+""",
+    "crt": """
+## Notes
+
+A stacked **CRT / VHS** stylisation applied multiplicatively over Front 1: horizontal
+scanlines, an RGB **phosphor-triad** mask, a corner **vignette**, and a slow **rolling
+bright bar** like a mis-synced analogue signal. Every piece is dialable so you can go from a
+subtle "this is on a monitor" cue to full retro grunge.
+
+### How it works
+- **Scanlines** — `tone` darkens every other line via `sin(y * scanFreq)`, depth set by
+  `scanDepth`.
+- **Phosphor mask** — `x mod 3` selects which of R/G/B stays bright in each column; the
+  other two are knocked back by `maskDepth`, giving the characteristic colour-fringed
+  vertical stripes.
+- **Vignette** — radial darkening from frame centre, strength `vignette`.
+- **Rolling bar** — a soft bright band whose vertical position is the **keyframed** `roll`
+  variable (0..1 = one full pass up the frame). Animate it for the drifting-hold-bar look.
+
+### Controls
+- `scanDepth` / `maskDepth` / `vignette` — 0..1 strength of each effect (set any to 0 to
+  disable it).
+- `scanFreq` — scanline pitch (higher = finer lines).
+- `roll` — **keyframe this** 0->1 over your shot to make the bright bar crawl. Default is
+  one pass over frames 1-100; rescale to taste.
+
+### Notes
+- Expects a **display-referred / working image** — the effect multiplies the existing pixel
+  values, so it reads correctly on a graded/display look.
+- Connect **Matte 1** if you want the alpha passed through (the RGB look ignores it).
+- For maximum authenticity, follow with a slight horizontal blur + chromatic-aberration
+  offset in a separate node (this node can't sample neighbours).
+""",
+    "truchet": """
+## Notes
+
+**Truchet tiling** — a venerable generative-art trick. Each square cell contains one of two
+quarter-circle arc pairs, chosen at random; because the arcs always meet the cell edges at
+the same points, adjacent tiles connect into one continuous, endless maze of curves. From a
+two-state-per-cell hash you get organic-looking circuit / pipe / labyrinth patterns.
+
+### How it works
+The frame is divided into `tile`-pixel cells. Each cell is **hashed** (`_hash2` on the cell
+index) to a 0/1 `flip` that mirrors the local coordinates, swapping the arc orientation. Two
+quarter-circles (radius = half a cell, centred on opposite corners) are drawn as the
+distance band `arc`; a soft threshold of width `lineW` inks them.
+
+### Controls
+- `tile` — cell size in pixels (the scale of the weave).
+- `lineW` — arc stroke width in pixels.
+- `aR..bB` — line and background colours (default white lines on black).
+
+### Notes
+- This is a **pure generator** — it ignores any Front input and produces the same pattern
+  regardless of what's connected; expects nothing.
+- Keyframe the **Centre** to scroll the weave, or `tile` to zoom it.
+- Feed the matte into a displacement / edge node for a circuit-board or stained-glass look.
+""",
+    "palette_quantize": """
+## Notes
+
+**Limited-palette posterise.** Front 1 is reduced to `levels` discrete tonal steps and the
+result is re-coloured between two palette anchors — the budget-friendly route to a
+pixel-art / retro-console look without needing a full per-colour palette match (which would
+blow the 8-variable cap three times over).
+
+### How it works
+The Rec.709 luma is quantized: `floor(luma * levels) / (levels - 1)` snaps it to `levels`
+evenly-spaced values. That stepped value `q` then drives `_two_color`, so each tone lands
+on a `mix` between colour A (darkest) and colour B (lightest). Pick the two endpoints and
+the intermediate steps fall on the ramp between them.
+
+### Controls
+- `levels` — number of tones (4 = the classic 4-shade console look; 2 = hard duotone).
+- `aR/aG/aB` (dark) and `bR/bG/bB` (light) — the palette endpoints.
+
+### Recipes
+- **Game-Boy green:** `levels` 4, A = dark green (≈0.06, 0.22, 0.06), B = pale green
+  (≈0.61, 0.74, 0.06).
+- **Sepia duotone:** `levels` 2-3, A = deep brown, B = cream.
+
+### Notes
+- Expects a **display-referred / working image** — it snaps by display luma, so grade
+  first, quantize last.
+- This is the tonal-ramp approach; for a *hue*-based limited palette, qualify with
+  `chroma_key` / `hsl_targeted` upstream and quantize the regions separately.
+""",
+    "seven_segment": """
+## Notes
+
+A **single 7-segment digit** rasterised straight into the frame from a number — no Text
+node, no font, no external matte. The seven bars are signed-distance boxes laid out in the
+classic calculator/LED arrangement, and which ones light is decided by an **arithmetic
+truth table** on the `digit` variable (0..9). Keyframe `digit` and you have a **frame
+counter / timer** baked into the comp.
+
+### How it works
+Local coordinates are taken relative to **Centre** and normalised by `digScale`. For each of
+the seven segments (a=top ... g=middle) a per-digit selector — built from `step()` equality
+tests against `floor(digit + 0.5)` — multiplies that bar's box fill, and the seven results
+are `max`-combined into the lit shape `seg`. No loop, no array: the truth table is unrolled
+into the expression.
+
+### Controls
+- `digit` — 0..9. **Keyframe it** (e.g. 0->9 over 10 frames, repeating) to count. Values are
+  rounded, so a linear keyframe steps cleanly through the digits.
+- `digScale` — pixel half-height of the digit.
+- `thick` — stroke half-width (segment fatness) in local units.
+- `hw` / `hh` — half-length of the horizontal / vertical bars (tune the proportions).
+- `lit` — brightness of the lit segments (the unlit/background tone is near-black with a
+  faint green tint for an LED feel).
+
+### Recipes
+- **Frame counter:** keyframe `digit` 0->9 linearly across 10 frames, set the channel to
+  cycle/repeat. Place several copies at different Centres for multi-digit readouts.
+- **Countdown leader:** keyframe `digit` 9->0 over your countdown and composite over the
+  plate.
+
+### Notes
+- A **generator** — composite the result over your plate (the matte gives you the digit
+  shape for the merge).
+- It's **one digit by design**; for a multi-digit display, duplicate the node and offset
+  each Centre, driving each `digit` from the appropriate place value.
+""",
+    # --- optics ---
+    "thin_film": """
+## Notes
+
+**Thin-film interference** — the rainbow you see on a soap bubble, an oil slick, or a fuel
+sheen. The light reflecting off the top and bottom of a thin film interferes; the colour that
+survives depends on the film's optical thickness, so as thickness changes across the frame the
+hue cycles through the spectrum. Here the optical path is faked as a function of **radius**
+(DIST) so the bands ring out from the **Centre**.
+
+### How it works
+- `phase = dist * scale * thickness + shift`. `fract(phase)` rolls 0→1 repeatedly, and
+  `_hue2rgb()` turns that 0..1 into a fully-saturated spectral colour — so each unit of phase
+  is one full pass through the rainbow.
+- RGB is the spectral colour; **OutMatte is the band intensity** `(sin(phase·2π)+1)/2`, handy
+  as a mask to comp the iridescence over something.
+
+### Practical notes
+- `scale` sets how tightly the bands ring (try 0.001–0.02); `thickness` multiplies it, so it's
+  a second, more "physical" knob (thicker film = more, finer rings).
+- **`shift` is the keyframed clock** (0 → 1 over frames 1–100 = one full rainbow cycle) — scrub
+  to roll the colours outward. Edit the two keys for speed/length; reverse them to roll inward.
+- Tag it Raw/Data-ish — it's a generated look, not scene-linear light. Screen/add it over a
+  surface for an oil-slick comp.
+""",
+    "wave_interference": """
+## Notes
+
+A **ripple tank**: two circular point sources dropped into still water, their wavefronts
+crossing to make the classic interference lattice (bright where crests meet, dark where a crest
+meets a trough).
+
+### How it works
+- Source **A** sits at the node **Centre**; source **B** is offset by `srcX` pixels on X. Each
+  contributes `cos(k·distance − phase)` where `k = 2π/wavelength` (wavelength baked to 80 px in
+  formula `k`), and the two are summed and remapped to 0..1.
+- Only **two** sources — the node has no loops, so each source is written out by hand. With the
+  two-colour vars eating 6 of 8 slots, only **two** own vars are exposed (`srcX` + `phase`);
+  edit the `k` formula to change the ripple wavelength.
+
+### Practical notes
+- `srcX` = horizontal separation of the second source (set to 0 to collapse onto a single source
+  = plain concentric rings; widen for a finer interference lattice).
+- **`phase` is the keyframed clock** (0 → 4π over frames 1–100 = two full ripple cycles) — scrub
+  to make the wavefronts travel outward.
+- Two colours `aR/aG/aB`→`bR/bG/bB` (default black→white); raw field on OutMatte. Uses: caustic
+  refs, energy fields, sonar interference.
+""",
+    "moire": """
+## Notes
+
+An **intentional moiré**: lay two near-identical line gratings over each other and the tiny
+frequency/angle mismatch beats into a slow, large-scale pattern — the same artefact you get
+photographing a CRT or a striped shirt, here made on purpose.
+
+### How it works
+- `sin(x·freqA)` is grating A (vertical lines); `sin((x·0.9992 + y·0.04)·freqB)` is grating B
+  rotated by a fixed small angle. **Multiplying** them produces the beat (their sum/difference
+  frequencies); the product is remapped to 0..1.
+- The two-colour vars eat 6 of 8 slots, so the two **frequencies** are the exposed knobs (the
+  rotation is baked); the frequency mismatch is what drives the moiré anyway.
+
+### Practical notes
+- Keep `freqA` and `freqB` **close** (e.g. 0.08 vs 0.085) — the closer they are, the wider and
+  slower the moiré bands.
+- Nudge `freqA`/`freqB` by hundredths to "tune" the pattern; keyframe one for a living,
+  breathing moiré.
+- Two colours `aR/aG/aB`→`bR/bG/bB`; raw pattern on OutMatte. Uses: op-art, interference/aliasing
+  FX, screen-artefact looks.
+""",
+    "starfield": """
+## Notes
+
+A **procedural starfield** — no plotting, no loop. Space is tiled into `cellSize` cells; each
+cell is hashed once (`_hash2`) and may hold a single star. Because the hash is deterministic per
+cell, the field is stable when you scrub (only the twinkle moves).
+
+### How it works
+- `h = _hash2(floor(pixel / cellSize))` — a per-cell random vec2. `h.y` gates whether the cell
+  has a star (`smoothstep(threshold, 1.0, h.y)` — raise `threshold` for fewer, brighter stars);
+  `h.x` seeds its twinkle phase and a faint warm/cool tint.
+- `d` is the distance from the pixel to the star's sub-cell position; a `smoothstep` makes a
+  small round dot.
+
+### Practical notes
+- `cellSize` = average star spacing (px); `threshold` (0..1) = density (higher = sparser);
+  `brightness` scales them all.
+- **`twinkle` is the keyframed clock** (0 → 1 over frames 1–100 = one twinkle cycle); each star
+  pulses on its own `h.x` phase so they don't blink in unison.
+- One star per cell by construction — drop `cellSize` for a denser sky. RGB carries a subtle
+  hash tint; OutMatte is the clean star mask (good for glow/comp).
+""",
+    "radar_sweep": """
+## Notes
+
+A **radar / oscilloscope sweep**: a bright line rotates around the **Centre**, trailing a
+phosphor afterglow that fades the further behind the line you are, over faint range rings.
+
+### How it works
+- `gap = mod(sweep − pixelAngle, 2π)` is the **angular distance behind** the sweep line (0 at the
+  line, growing all the way round). `exp(−gap·decay)` is the afterglow — bright at the line,
+  decaying smoothly behind it.
+- `rings` adds faint concentric range rings from radius (`length` to Centre) at `ringFreq`.
+- The trail and rings are tinted by `glowR/glowG/glowB` (default phosphor green); OutMatte is the
+  combined brightness.
+
+### Practical notes
+- **`sweep` is the keyframed clock** (0 → 2π over frames 1–100 = one full revolution) — scrub to
+  spin it. Reverse the keys to sweep the other way; extend past 2π for multiple turns.
+- `decay` sets afterglow length (higher = shorter, tighter trail); `ringFreq` sets range-ring
+  spacing. Recolour via `glowR/glowG/glowB`.
+- Generated look (tag Raw/Data). Screen it over a HUD/background; OutMatte drives glow or comps
+  the sweep on its own.
+""",
+    # --- diag ---
+    "color_blindness": """
+## Notes
+
+A **colour-blindness simulator** for accessibility QC: it shows roughly how Front 1 looks to a
+viewer with one of the three dichromacies, so you can confirm graphics, mattes overlays, and
+status colours still read for everyone.
+
+### Matrices
+Uses the **Machado, Oliveira & Fernandes (2009)** severity-1.0 LMS-deficiency matrices —
+the same set Chrome DevTools and many accessibility tools ship — applied as a single 3×3 per
+type (the LMS round-trip is pre-baked into the matrix). One matrix each for:
+- `type` **0 = protanopia** (no L / red cones)
+- `type` **1 = deuteranopia** (no M / green cones)
+- `type` **2 = tritanopia** (no S / blue cones)
+
+The three simulated colours are computed in parallel (formulas `simP`/`simD`/`simT`, three dot
+products each), then **selected with `step()` weights** `w = (wProtan, wDeutan, wTritan)` — no
+arrays or branches — and each output channel is a single `dot()` against `w`.
+
+### Controls
+- `type` picks the deficiency (round to 0/1/2; the step thresholds are at 0.5 and 1.5).
+- `amount` 0..1 blends original→full simulation (handy for an A/B nudge).
+
+### Practical notes
+- **Feed display-referred, sRGB-ish values.** The matrices are fit in sRGB display space; on
+  scene-linear footage add a view transform / `linear_to_srgb` before this node.
+- Matte just passes **Matte 1** through; connect it if you need the alpha preserved.
+""",
+    "exposure_zebra": """
+## Notes
+
+A **camera-style zebra** overlay: animated diagonal hatching marks where Front 1 is clipping,
+without changing the underlying pixels you grade against.
+
+### How it works
+- Clipping is detected on the **per-channel max**, `chmax = max(r,g,b)`: at or above `hi`
+  (default 1.0) the pixel is "over" → **red** stripes; at or below `lo` (default 0.0) it is
+  "under" → **blue** stripes; everything between passes through untouched.
+- The stripe pattern is `step(0.0, sin((x + y) * freq + phase))` — a hard diagonal hatch.
+  `freq` sets the stripe pitch; **`phase` is keyframable**, so animate it to make the stripes
+  crawl (a moving hatch is easier to spot than a static one).
+
+### Controls
+- `hi` / `lo` — clip thresholds (raise `hi` to flag only true whites, etc.).
+- `freq` — stripe spacing; `phase` — keyframe to crawl.
+
+### Practical notes
+- Detection is on the channel max, so a single blown channel still flags (matches how a real
+  zebra warns on the brightest component).
+- **OutMatte** carries the clipped mask (`max(over, under)`) — connect **Matte 1** to render
+  it; use it to drive a fix downstream or just to count clipped pixels.
+""",
+    "gamut_clip": """
+## Notes
+
+Flags **illegal / out-of-gamut pixels** so negative light and over-range values don't sneak
+through a comp.
+
+### How it works
+- **Negative** (`min(r,g,b) < 0`) → tinted **magenta** (1,0,1).
+- **Over-ceiling** (`max(r,g,b) > ceiling`, default 1.0) → tinted **yellow** (1,1,0).
+- In-range pixels pass through. Negative wins where a pixel is both.
+- `tint` 0..1 sets how strongly the warning colour replaces the pixel (1.0 = solid flag,
+  lower = a translucent wash so you can still see the image under it).
+
+### Controls
+- `ceiling` — the upper legal bound (set to your delivery white, e.g. 1.0 for 0–1 deliverables).
+- `tint` — warning opacity.
+
+### Practical notes
+- **Negative light** is the common culprit after a saturated grade, a colour-space matrix, or
+  a sharpen — this makes it visible instead of silently clamped later.
+- **OutMatte** is the union mask (`max(neg, over)`) — connect **Matte 1** to render it and feed
+  a clamp/repair only where it's needed.
 """,
 }
 

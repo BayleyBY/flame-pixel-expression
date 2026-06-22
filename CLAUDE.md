@@ -1,19 +1,31 @@
 # CLAUDE.md
 
-Guidance for working in this project.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
 A library of **Autodesk Flame "Pixel Expression" node setups** (`.pixel_expression_node`
 files) that translate the best Foundry Nuke expression-node examples into Flame's GLSL.
 The Pixel Expression node (Flame 2027.1+) applies per-pixel GLSL to a clip's channels.
 
+## Commands
+Pure-stdlib Python 3 — no dependencies, no venv, no install step.
+- `python3 tools/generate_setups.py` — regenerate all 112 `.pixel_expression_node` files +
+  companion `.md` docs from the generator. Run after any edit to `tools/generate_setups.py`.
+- `python3 tools/validate_setups.py` — static-check every generated setup. Must be **0
+  errors** (errors on reserved-name collisions; warns on unused/undefined identifiers,
+  unbalanced parens, bad slot counts). Run after every regenerate.
+- `/sync-docs` — project command: does regenerate + validate + drift-check and syncs the
+  counts and Live-Flame status across CLAUDE.md and README. Prefer this for routine edits.
+
+There is no test suite, lint, or build beyond the above — `validate_setups.py` is the test.
+
 ## Golden rule: never hand-edit the setup files
-`tools/generate_setups.py` is the **single source of truth**. All 83 `.pixel_expression_node`
+`tools/generate_setups.py` is the **single source of truth**. All 112 `.pixel_expression_node`
 files and their companion `.md` docs are generated from it.
 - Add/change a setup → edit the `SETUPS` list, then add its `CATEGORY`, `DOCS`, and
   `EXPECTS` entries (the script warns if `DOCS`/`EXPECTS` are missing). Optionally add a
   `NOTES` entry — long-form Markdown appended to the setup's `.md` under a `## Notes`
-  heading (workflow, recipes, gotchas); all 83 setups currently have one.
+  heading (workflow, recipes, gotchas); all 112 setups currently have one.
 - Regenerate: `python3 tools/generate_setups.py`
 - Validate: `python3 tools/validate_setups.py` (must be **0 errors**; errors on reserved-name
   collisions — any var/formula shadowing a built-in/input; warns on unused vars / undefined
@@ -29,7 +41,7 @@ files and their companion `.md` docs are generated from it.
 - `.claude/commands/sync-docs.md` — the `/sync-docs` project command (regenerate, validate,
   drift-check, and sync counts + Live-Flame status across the hand-maintained docs).
 - `README.md` — human index (per-folder tables, colour-management, caveats).
-- `setups/` — the 83 generated `.pixel_expression_node` files + companion `.md` docs, in 13
+- `setups/` — the 112 generated `.pixel_expression_node` files + companion `.md` docs, in 19
   category subfolders (the loadable library).
 - `documentation/pixelexpression1.pixel_expression_node` — a real Flame-saved file kept as a
   worked example of the serialization (the one the format doc was reverse-engineered from; do
@@ -91,10 +103,25 @@ RGB+Matte for a matte generator), `_HOLLOW()`, the noise builders (`_VALUE_NOISE
 `_hue2rgb()`). Variable budget is 8; colour vars eat 6. HSV decode (`HSV_P`+`HSV_Q`) eats 2
 of the 4 formula slots.
 
-## Folders (83 setups, all under `setups/`)
+## Folders (112 setups, all under `setups/`)
 `alpha_matte_tools` `pattern_generators` `animated_generators` `color_grade`
 `3d_position_tools` `depth_tools` `aov_tools` `uv_distortion` `noise` `sdf_shapes`
 `hsv_color` `matte_combine` `utility`
+
+**Unconventional / experimental categories (added later, see "Live-Flame status"):**
+`fractals` `stmap_generators` `control_surfaces` `stylization` `optics_physics` `diagnostics`
+- `fractals` — escape-time Mandelbrot/Julia/Burning-Ship. **Architecture-limited to 8
+  iterations** (the node has no reassignable state; the only way to iterate is the 4-formula
+  chain, and inlining a complex square expands the string ~8× per step, so K=2/formula is the
+  ceiling). Interiors read solid, edges band — a texture tool, not a deep-zoom renderer.
+- `stmap_generators` — these OUTPUT a map (UV coords or a scalar) to be consumed by a
+  **downstream node**; there is no neighbour sampling, so the gather happens elsewhere. Each
+  `.md` "Notes" states the required downstream node (STMap for the UV maps; a variable-blur /
+  Defocus for `coc_from_depth`).
+- `control_surfaces` — Front 2 / Matte 2 used as a painted control surface (spatially-varying
+  parameters) and the node's two-outputs-at-once trick (`dual_output_depth`).
+- `stylization` `optics_physics` `diagnostics` — per-pixel looks, analytic physics generators,
+  and in-comp inspection tools (colour-blindness sim, exposure zebra, gamut clip).
 
 Note: procedural noise (`noise/`) and HSV/voronoi expressions are large and built
 programmatically in `tools/generate_setups.py` (the node has no user-defined GLSL functions,
@@ -102,10 +129,19 @@ so everything is inlined). All are verified in Flame, but they're the most compl
 the library — so if you edit one, they're the most likely to need a fresh live-compile check.
 
 ## Live-Flame status
-- **All 83 setups are verified loading and working in Flame** (every folder, incl. the
-  branchless rgb↔hsv conversions, the full `aov_tools/`/`depth_tools/`/`3d_position_tools/`/
-  `uv_distortion/` sets, and `hsl_targeted` — the longest single expression in the library).
-  New/changed setups still need a live check; the rest are confirmed.
+- **The original 83 setups are verified loading and working in Flame** (every folder up to and
+  including `utility`, incl. the branchless rgb↔hsv conversions, the full
+  `aov_tools/`/`depth_tools/`/`3d_position_tools/`/`uv_distortion/` sets, and `hsl_targeted` —
+  the longest single expression in the library).
+- **The 29 setups in the six unconventional categories (`fractals`, `stmap_generators`,
+  `control_surfaces`, `stylization`, `optics_physics`, `diagnostics`) are NOT yet
+  compile-checked in Flame.** They pass `tools/validate_setups.py` (0 errors) and are
+  algorithmically sound, but the static validator can't catch a live GLSL compile error —
+  these need a load/compile pass before they're trusted. Highest-risk to check first:
+  `seven_segment` (its `seg` formula is the longest single expression in the library now),
+  the three `fractals` (deeply-nested vec3 formula chains), `heat_haze_map` (inlines the fbm
+  builder), `thin_film`/`starfield` (swizzled vec formulas), and `color_blindness` (4 matrix
+  formulas). If any fails to load, fix it in `tools/generate_setups.py` and regenerate.
 - **History/lesson:** `hsl_targeted` first failed to load because it declared a variable
   `width` (collides with the injected built-in `width`); renamed to `bandWidth`. The
   validator now flags ANY var/formula that shadows a built-in/input (not just `uv`), so this

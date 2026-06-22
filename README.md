@@ -1,20 +1,25 @@
 # Pixel Expression Setup Library
 
-**83 ready-to-load `.pixel_expression_node` setups** translating the best Nuke expression
-examples to Flame GLSL. Load via the node's setup browser. **Connect inputs in Batch** —
-wiring isn't stored in these files.
+**112 ready-to-load `.pixel_expression_node` setups** — 83 translating the best Nuke
+expression examples to Flame GLSL, plus a later wave of 29 **unconventional / experimental**
+setups (fractals, ST-map generators, painted control surfaces, stylization, optics/physics,
+diagnostics). Load via the node's setup browser. **Connect inputs in Batch** — wiring isn't
+stored in these files.
 
 Tooling (in `tools/`):
 - `tools/generate_setups.py` — single source of truth; edit a dict + the `CATEGORY` map and
   re-run to regenerate every file. Handles XML-escaping, slot padding, and folders.
 - `tools/validate_setups.py` — sanity sweep: XML well-formedness, slot counts, balanced parens,
   reserved-name collisions, and undefined-identifier checks (catches variable typos).
-  Run after any edit; current status: **83 setups, 0 errors, 0 warnings**.
+  Run after any edit; current status: **112 setups, 0 errors, 0 warnings**.
 
-**Live-Flame status:** all 83 setups are confirmed loading and working in Flame — every
-folder, including the branchless rgb↔hsv conversions in `hsv_color/` and the full
-`aov_tools/`, `depth_tools/`, `3d_position_tools/`, and `uv_distortion/` sets. Only
-new or changed setups need a re-check after editing `tools/generate_setups.py`.
+**Live-Flame status:** the original **83 setups are confirmed loading and working in Flame** —
+every folder up to `utility/`, including the branchless rgb↔hsv conversions in `hsv_color/`
+and the full `aov_tools/`, `depth_tools/`, `3d_position_tools/`, and `uv_distortion/` sets.
+The **29 setups in the six experimental categories** (`fractals`, `stmap_generators`,
+`control_surfaces`, `stylization`, `optics_physics`, `diagnostics`) pass the validator but are
+**not yet compile-checked in Flame** — load-test them before trusting. Only new or changed
+setups need a re-check after editing `tools/generate_setups.py`.
 
 Every setup also has a companion `<name>.md` next to it with **What it does / Use case /
 Inputs / Expects (colour space) / Variables** — generated from the same script, so the
@@ -32,6 +37,9 @@ setups/
   3d_position_tools/    depth_tools/          aov_tools/             uv_distortion/
   noise/                sdf_shapes/           hsv_color/             matte_combine/
   utility/
+  # unconventional / experimental (not yet Flame-verified):
+  fractals/             stmap_generators/     control_surfaces/      stylization/
+  optics_physics/       diagnostics/
 tools/         generate_setups.py  validate_setups.py
 documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
                pixelexpression1.pixel_expression_node (worked save-format example)
@@ -230,6 +238,74 @@ at 0,0 — use **Show Icon** to position.
 |------|-------------|---------------|----------------------|
 | `stmap` | ST/UV map `(x+0.5)/width` | none (generator) | — |
 | `nan_cleanup` | NaN/Inf pixel fix | Front 1 (opt. Front 2) | — |
+
+## Unconventional / experimental setups
+The six categories below push Pixel Expression past the usual Nuke-derived toolkit: per-pixel **fractals**, **map-generators** that feed a downstream node, painted **control surfaces**, **stylization**, analytic **optics/physics**, and in-comp **diagnostics**. **These 29 setups pass `validate_setups.py` (0 errors) but are not yet compile-checked in Flame** — load-test before trusting (see the Live-Flame note at the top).
+
+### `fractals/`
+Escape-time fractals — **architecture-limited to 8 iterations** (shallow; texture, not deep-zoom).
+
+| File | What it does | Inputs needed | Variables (defaults) |
+|------|--------------|---------------|----------------------|
+| `burning_ship` | Burning Ship fractal (abs-folded squaring) | none | `zoom` (400.0), + colours |
+| `julia` | Escape-time Julia set | none | `zoom` (400.0), `cRe` (-0.8), `cIm` (0.156) |
+| `mandelbrot` | Escape-time Mandelbrot set | none | `zoom` (400.0), + colours |
+
+### `stmap_generators/`
+Each OUTPUTS a map for a **downstream node** (STMap, or a variable-blur/Defocus for `coc_from_depth`) — see each `.md` Notes.
+
+| File | What it does | Inputs needed | Variables (defaults) |
+|------|--------------|---------------|----------------------|
+| `chromatic_aberration_map` | Radial per-channel ST map (red channel's UV) + blue = offset magnitude | none (generator → STMap) | `amount` (0.02) |
+| `coc_from_depth` | Per-pixel circle-of-confusion radius (0..1) from depth on Matte 1 | Matte 1 (depth) | `focusDepth` (5.0), `focusRange` (5.0), `maxBlur` (1.0) |
+| `glitch_block_map` | Block-shuffle ST map | none (generator → STMap) | `blockSize` (64.0), `corruption` (0.0), `seed` (0.0) |
+| `heat_haze_map` | fbm-driven UV-offset ST map | none (generator → STMap) | `scale` (120.0), `seed` (0.0), `lacunarity` (2.0), `persistence` (0.5), `amp` (0.03) |
+| `kaleidoscope_map` | Mirror-folds angular space into `segments` wedges around Centre | none (generator → STMap) | `segments` (6.0), `rot` (0.0) |
+| `lens_distort_map` | Radial barrel/pincushion ST map (`k1`,`k2`) with anamorphic `squeeze` around Centre. | none (generator → STMap) | `k1` (0.1), `k2` (0.0), `squeeze` (1.0) |
+| `polar_to_cartesian` | Polar/rectangular ST map around Centre | none (generator → STMap) | `twist` (0.0), `zoom` (1.0) |
+
+### `control_surfaces/`
+Front 2 / Matte 2 as a painted control surface; plus the two-outputs-at-once trick.
+
+| File | What it does | Inputs needed | Variables (defaults) |
+|------|--------------|---------------|----------------------|
+| `channel_pack` | Packs three single-channel signals into one RGB | Matte 1 + Matte 2 + Front 1 | — |
+| `channel_unpack` | Passes a packed RGB (from channel_pack) through unchanged and routes one channel to the Matte | Front 1 (the packed RGB) | `pick` (0) |
+| `dual_output_depth` | ONE node, TWO products | Front 1 (beauty) + Matte 1 (depth) | `near` (0.0), `far` (1.0), `strength` (0.0), `tintR` (0.6), `tintG` (0.8), `tintB` (1.4) |
+| `painted_grade` | Grades Front 1 using a PAINTED Front 2 control map | Front 1 (image) + Front 2 (control map); Matte 1 optional (passes through) | `expRange` (2.0), `hueRange` (1.0), `satRange` (1.0) |
+
+### `stylization/`
+Per-pixel looks on Front 1 (no neighbour gather).
+
+| File | What it does | Inputs needed | Variables (defaults) |
+|------|--------------|---------------|----------------------|
+| `bayer_dither` | Ordered 4x4 Bayer dithering | Front 1 | `levels` (2.0), + colours |
+| `crosshatch` | Pen crosshatch | Front 1 | `spacing` (8), `lineW` (0.5), + colours |
+| `crt` | CRT/VHS look | Front 1 (+ Matte 1 to pass alpha) | `scanDepth` (0.3), `maskDepth` (0.3), `vignette` (0.4), `scanFreq` (1.5), `roll` (animated) |
+| `halftone` | Newspaper halftone | Front 1 | `cell` (12), `angle` (0.4), + colours |
+| `palette_quantize` | Snaps Front 1 to `levels` tonal steps and tints the result between two palette anchor colours (default 4-tone | Front 1 | `levels` (4.0), + colours |
+| `seven_segment` | Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node | none (generator; composite over your plate) | `digit` (0.0), `digScale` (150), `thick` (0.1), `hw` (0.42), `hh` (0.42), `lit` (1.0) |
+| `truchet` | Truchet tiles | none (procedural; ignores Front) | `tile` (40), `lineW` (4.0), + colours |
+
+### `optics_physics/`
+Analytic physics/optics generators around Centre; animate the keyframed var noted in each `.md`.
+
+| File | What it does | Inputs needed | Variables (defaults) |
+|------|--------------|---------------|----------------------|
+| `moire` | Beat pattern of two near-identical line gratings (`freqA` vs `freqB`) — an intentional moiré. | none | `freqA` (0.08), `freqB` (0.085), + colours |
+| `radar_sweep` | Rotating radar/oscilloscope sweep around Centre with an exponential afterglow trailing behind the line, plus faint range rings | none (uses Centre) | `sweep` (animated), `decay` (3.0), `ringFreq` (0.02), `glowR` (0.1), `glowG` (1.0), `glowB` (0.3) |
+| `starfield` | Procedural stars | none | `cellSize` (40.0), `twinkle` (animated), `threshold` (0.92), `brightness` (1.0) |
+| `thin_film` | Thin-film interference iridescence | none (uses Centre) | `thickness` (1.0), `scale` (0.004), `shift` (animated) |
+| `wave_interference` | Ripple-tank interference of two circular point sources (Centre + `srcX` offset) | none (uses Centre) | `srcX` (300.0), `phase` (animated), + colours |
+
+### `diagnostics/`
+In-comp inspection tools on Front 1.
+
+| File | What it does | Inputs needed | Variables (defaults) |
+|------|--------------|---------------|----------------------|
+| `color_blindness` | Simulates colour-vision deficiency on Front 1 (Machado 2009 severity-1.0 matrix) | Front 1 (+ Matte 1 to pass alpha) | `type` (0), `amount` (1.0) |
+| `exposure_zebra` | Overlays animated diagonal stripes on clipped pixels | Front 1 (+ Matte 1 to render OutMatte) | `hi` (1.0), `lo` (0.0), `freq` (0.15), `phase` (0.0) |
+| `gamut_clip` | Flags illegal pixels | Front 1 (+ Matte 1 to render OutMatte) | `ceiling` (1.0), `tint` (1.0) |
 
 ## Colour management
 The node does **no colour management** — it runs GLSL math on whatever float values arrive
