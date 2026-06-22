@@ -1,6 +1,6 @@
 # julia
 
-**What it does:** Escape-time Julia set; constant `cRe`/`cIm` picks the shape (keyframe to morph). Grayscale.
+**What it does:** Escape-time Julia set; constant `cRe`/`cIm` picks the shape (keyframe to morph), `gain`/`gamma` shape the bands. Grayscale.
 
 **Use case:** Animated organic fractal element; morphing background or matte.
 
@@ -8,7 +8,7 @@
 
 **Expects:** any — generates data/values
 
-**Variables:** `zoom` (400.0), `cRe` (-0.8), `cIm` (0.156)
+**Variables:** `zoom` (400.0), `cRe` (-0.8), `cIm` (0.156), `gain` (1.0), `gamma` (1.0)
 
 ## Notes
 
@@ -34,7 +34,8 @@ Like `mandelbrot`, this is **8 total iterations** (the 4-formula chain expands ~
 inlined step, so deeper is impractical). Interiors read solid; edges band. It's a
 texture/animation tool, not a deep renderer.
 
-### Output
-**Grayscale** — the raw 0..1 escape value written to RGB **and** Matte (via `_solid`, to
-stay within the variable budget alongside `cRe`/`cIm`). Tint it downstream, or drive a mask
-from the Matte. Pan/zoom via node **Centre** + `zoom` exactly as in `mandelbrot`.
+### Output (`gain` / `gamma`)
+**Grayscale** — the escape value written to RGB **and** Matte (via `_solid`). As in
+`mandelbrot`, `gamma` curves the bands (`>1` darkens mids / crisper, `<1` lifts / more glow)
+and `gain` scales brightness after; both default `1.0`, order `clamp(pow(escape, gamma) *
+gain, 0, 1)`. Tint downstream or mask off the Matte. Pan/zoom via node **Centre** + `zoom`.

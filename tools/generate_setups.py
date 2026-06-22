@@ -245,7 +245,7 @@ def _solid(expr):
 # K=3 would blow past 33KB. 8 total iterations is the practical ceiling here.
 _FRAC_K = 2                      # iterations per formula slot
 _FRAC_FORMULAS = 4               # formula slots used by the chain
-_FRAC_TOTAL = _FRAC_K * _FRAC_FORMULAS   # 20 — the accum normaliser
+_FRAC_TOTAL = _FRAC_K * _FRAC_FORMULAS   # 8 — the accum normaliser
 # Pixel mapped to the complex plane relative to the node Centre, scaled by `zoom`.
 _FRAC_PIX = "vec2((x - centre.x) / zoom, (y - centre.y) / zoom)"
 
@@ -281,7 +281,10 @@ def _fractal_chain(start, c, abs_z=False):
 
 # Smooth 0..1 escape value from the final formula's accumulator (z3.z), normalised by the
 # total iteration count. 0 = never escaped (interior), 1 = escaped immediately (far outside).
-_FRAC_ESCAPE = f"clamp(z3.z / {float(_FRAC_TOTAL)}, 0.0, 1.0)"
+_FRAC_RAW = f"clamp(z3.z / {float(_FRAC_TOTAL)}, 0.0, 1.0)"
+# Shaped output: `gamma` curves the bands (contrast; >1 darkens mids, <1 lifts them), then
+# `gain` scales brightness. Both default 1.0 per setup, so the default look is the raw value.
+_FRAC_ESCAPE = f"clamp(pow({_FRAC_RAW}, gamma) * gain, 0.0, 1.0)"
 
 
 # --- Stylization helpers -----------------------------------------------------
@@ -1033,23 +1036,28 @@ SETUPS = [
     # All three share _fractal_chain (4 vec3 formulas z0..z3, 8 total iterations) and read
     # the smooth escape value _FRAC_ESCAPE off z3.z. Pan/zoom via node Centre + `zoom`.
 
-    # Mandelbrot — c = pixel, z0 = 0. _two_color palettes the escape value; Matte = raw.
+    # Mandelbrot — c = pixel, z0 = (cRe,cIm). cRe/cIm seed the iteration (default 0,0 = the
+    # classic set); KEYFRAME them to morph, mirroring Julia's constant. Grayscale via _solid.
     dict(name="mandelbrot",
-         **_two_color(_FRAC_ESCAPE),
-         variables=[("zoom", 400.0)] + _COLVARS,
-         formulas=_fractal_chain("vec3(0.0, 0.0, 0.0)", _FRAC_PIX)),
+         **_solid(_FRAC_ESCAPE),
+         variables=[("zoom", 400.0), ("cRe", 0.0), ("cIm", 0.0),
+                    ("gain", 1.0), ("gamma", 1.0)],
+         formulas=_fractal_chain("vec3(cRe, cIm, 0.0)", _FRAC_PIX)),
 
     # Julia — z0 = pixel, c = constant (cRe,cIm). KEYFRAME cRe/cIm to morph. Grayscale.
     dict(name="julia",
          **_solid(_FRAC_ESCAPE),
-         variables=[("zoom", 400.0), ("cRe", -0.8), ("cIm", 0.156)],
+         variables=[("zoom", 400.0), ("cRe", -0.8), ("cIm", 0.156),
+                    ("gain", 1.0), ("gamma", 1.0)],
          formulas=_fractal_chain(f"vec3({_FRAC_PIX}, 0.0)", "vec2(cRe, cIm)")),
 
     # Burning Ship — like Mandelbrot but fold z to abs() before each square (abs_z=True).
+    # cRe/cIm seed z0 (default 0,0 = classic); KEYFRAME to morph. Grayscale via _solid.
     dict(name="burning_ship",
-         **_two_color(_FRAC_ESCAPE),
-         variables=[("zoom", 400.0)] + _COLVARS,
-         formulas=_fractal_chain("vec3(0.0, 0.0, 0.0)", _FRAC_PIX, abs_z=True)),
+         **_solid(_FRAC_ESCAPE),
+         variables=[("zoom", 400.0), ("cRe", 0.0), ("cIm", 0.0),
+                    ("gain", 1.0), ("gamma", 1.0)],
+         formulas=_fractal_chain("vec3(cRe, cIm, 0.0)", _FRAC_PIX, abs_z=True)),
 
     # --- ST-map generators (feed a downstream STMap node) ------------------
 
@@ -1672,13 +1680,13 @@ DOCS = {
                        "Re-encode to sRGB for display/output after linear work.",
                        "Front 1"),
     # fractals  (8-iteration escape-time; pan/zoom via node Centre + `zoom`)
-    "mandelbrot": ("Escape-time Mandelbrot set; 0..1 smooth escape value palette-mapped (aR..bB).",
+    "mandelbrot": ("Escape-time Mandelbrot set; `cRe`/`cIm` seed z0 (keyframe to morph), `gain`/`gamma` shape the bands. Grayscale.",
                    "Procedural fractal texture/matte; abstract background or displacement source.",
                    "none"),
-    "julia": ("Escape-time Julia set; constant `cRe`/`cIm` picks the shape (keyframe to morph). Grayscale.",
+    "julia": ("Escape-time Julia set; constant `cRe`/`cIm` picks the shape (keyframe to morph), `gain`/`gamma` shape the bands. Grayscale.",
               "Animated organic fractal element; morphing background or matte.",
               "none"),
-    "burning_ship": ("Burning Ship fractal (abs-folded squaring); palette-mapped escape value.",
+    "burning_ship": ("Burning Ship fractal (abs-folded squaring); `cRe`/`cIm` seed z0 (keyframe to morph), `gain`/`gamma` shape the bands. Grayscale.",
                      "Sharp, ship-like procedural fractal texture/matte.",
                      "none"),
     # stmap_generators
@@ -3198,21 +3206,32 @@ node's practical size limit (K=3 would be ~33 KB per formula). So:
 
 ### How it works
 Each pixel maps to the complex plane relative to the node **Centre**, scaled by `zoom`
-(bigger `zoom` = closer). `c` = that coordinate, `z` starts at 0. Every iteration squares
-`z` and adds `c`, and accumulates `step(|z|^2, 4.0)` — 1 while still inside the bailout
-radius, 0 once it escapes. Summing across all 8 iterations gives a 0..1 **smooth escape
-value** (`z3.z / 20.0`, normalised to the *maximum possible* count so the tonal range stays
-stable even though only 8 steps run).
+(bigger `zoom` = closer). `c` = that coordinate, `z` starts at `(cRe, cIm)`. Every iteration
+squares `z` and adds `c`, and accumulates `step(|z|^2, 4.0)` — 1 while still inside the
+bailout radius, 0 once it escapes. Summing across all 8 iterations gives a 0..1 **smooth
+escape value** (`z3.z / 8.0`, normalised to the *maximum possible* count so the tonal range
+stays stable even though only 8 steps run).
+
+### The seed (keyframe `cRe`/`cIm`)
+`cRe`/`cIm` set the **starting value of `z`** (default `0,0` = the classic Mandelbrot). They
+are the structural mirror of Julia's constant: where `julia` keyframes the added constant
+`c`, here you keyframe the seed `z0`. Nudging them off zero distorts and morphs the whole
+set — **keyframe them** for an animated, breathing fractal. Default `(0,0)` leaves the
+familiar Mandelbrot look unchanged.
 
 ### Pan / zoom
 - **Pan:** move the node **Centre** to the region you want centred.
 - **Zoom:** raise `zoom` (default 400). Because iteration depth is fixed at 8, zooming in
   past a point just shows bigger, smoother bands — there's no new detail to reveal.
 
-### Colour
-The escape value is palette-mapped through `_two_color` (`aR/aG/aB` → `bR/bG/bB`, default
-black→white). Set the two colours for a duotone fractal; the **Matte** holds the raw 0..1
-escape value for masking. The classic black-interior / coloured-exterior look is the default.
+### Output (`gain` / `gamma`)
+**Grayscale** — the escape value written to RGB **and** Matte (via `_solid`). Two shaping
+controls ride on it, both default `1.0` (so the default look is the raw value):
+- **`gamma`** curves the bands — `>1` darkens the mids and pushes more area to black
+  (crisper edges), `<1` lifts them (more glow).
+- **`gain`** scales overall brightness after the curve (the result is re-clamped to 0..1).
+
+Order is `clamp(pow(escape, gamma) * gain, 0, 1)`. Tint downstream, or drive a mask off the Matte.
 
 ### Downstream
 Pure generator (no inputs). Feed the Matte into a comp as a procedural mask, or the RGB as a
@@ -3243,10 +3262,11 @@ Like `mandelbrot`, this is **8 total iterations** (the 4-formula chain expands ~
 inlined step, so deeper is impractical). Interiors read solid; edges band. It's a
 texture/animation tool, not a deep renderer.
 
-### Output
-**Grayscale** — the raw 0..1 escape value written to RGB **and** Matte (via `_solid`, to
-stay within the variable budget alongside `cRe`/`cIm`). Tint it downstream, or drive a mask
-from the Matte. Pan/zoom via node **Centre** + `zoom` exactly as in `mandelbrot`.
+### Output (`gain` / `gamma`)
+**Grayscale** — the escape value written to RGB **and** Matte (via `_solid`). As in
+`mandelbrot`, `gamma` curves the bands (`>1` darkens mids / crisper, `<1` lifts / more glow)
+and `gain` scales brightness after; both default `1.0`, order `clamp(pow(escape, gamma) *
+gain, 0, 1)`. Tint downstream or mask off the Matte. Pan/zoom via node **Centre** + `zoom`.
 """,
     "burning_ship": """
 ## Notes
@@ -3265,10 +3285,16 @@ The famous structure sits down in the **negative-imaginary** region. To frame it
 node **Centre** below/left of the origin and raise `zoom`. Because depth is fixed at 8, the
 fine antenna detail of real Burning Ship renders won't appear — you get the bold outline.
 
-### Colour / downstream
-Escape value palette-mapped through `_two_color` (default black→white); **Matte** = raw 0..1
-escape for masking. Identical workflow to `mandelbrot`. Blur downstream if the bands read
-too hard.
+### The seed (keyframe `cRe`/`cIm`)
+As in `mandelbrot`, `cRe`/`cIm` set the **starting value of `z`** (default `0,0` = the
+classic Burning Ship) — the structural mirror of Julia's constant. **Keyframe them** to
+distort and morph the silhouette; leave them at `(0,0)` for the familiar look.
+
+### Output / downstream (`gain` / `gamma`)
+**Grayscale** via `_solid` — escape value to RGB **and** Matte (the Matte masks). As in
+`mandelbrot`, `gamma` curves the bands and `gain` scales brightness after, both default `1.0`
+(`clamp(pow(escape, gamma) * gain, 0, 1)`). Identical workflow to `mandelbrot`. Blur
+downstream if the bands read too hard.
 """,
     # --- stmap ---
     "polar_to_cartesian": """

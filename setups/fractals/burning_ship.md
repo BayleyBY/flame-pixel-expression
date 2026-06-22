@@ -1,6 +1,6 @@
 # burning_ship
 
-**What it does:** Burning Ship fractal (abs-folded squaring); palette-mapped escape value.
+**What it does:** Burning Ship fractal (abs-folded squaring); `cRe`/`cIm` seed z0 (keyframe to morph), `gain`/`gamma` shape the bands. Grayscale.
 
 **Use case:** Sharp, ship-like procedural fractal texture/matte.
 
@@ -8,7 +8,7 @@
 
 **Expects:** any — generates data/values
 
-**Variables:** `zoom` (400.0), `aR` (0.0), `aG` (0.0), `aB` (0.0), `bR` (1.0), `bG` (1.0), `bB` (1.0)
+**Variables:** `zoom` (400.0), `cRe` (0.0), `cIm` (0.0), `gain` (1.0), `gamma` (1.0)
 
 ## Notes
 
@@ -26,7 +26,13 @@ The famous structure sits down in the **negative-imaginary** region. To frame it
 node **Centre** below/left of the origin and raise `zoom`. Because depth is fixed at 8, the
 fine antenna detail of real Burning Ship renders won't appear — you get the bold outline.
 
-### Colour / downstream
-Escape value palette-mapped through `_two_color` (default black→white); **Matte** = raw 0..1
-escape for masking. Identical workflow to `mandelbrot`. Blur downstream if the bands read
-too hard.
+### The seed (keyframe `cRe`/`cIm`)
+As in `mandelbrot`, `cRe`/`cIm` set the **starting value of `z`** (default `0,0` = the
+classic Burning Ship) — the structural mirror of Julia's constant. **Keyframe them** to
+distort and morph the silhouette; leave them at `(0,0)` for the familiar look.
+
+### Output / downstream (`gain` / `gamma`)
+**Grayscale** via `_solid` — escape value to RGB **and** Matte (the Matte masks). As in
+`mandelbrot`, `gamma` curves the bands and `gain` scales brightness after, both default `1.0`
+(`clamp(pow(escape, gamma) * gain, 0, 1)`). Identical workflow to `mandelbrot`. Blur
+downstream if the bands read too hard.
