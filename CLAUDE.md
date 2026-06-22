@@ -8,16 +8,22 @@ files) that translate the best Foundry Nuke expression-node examples into Flame'
 The Pixel Expression node (Flame 2027.1+) applies per-pixel GLSL to a clip's channels.
 
 ## Commands
-Pure-stdlib Python 3 — no dependencies, no venv, no install step.
+Generator + validator are pure-stdlib Python 3 — no deps, no venv, no install step.
 - `python3 tools/generate_setups.py` — regenerate all 112 `.pixel_expression_node` files +
   companion `.md` docs from the generator. Run after any edit to `tools/generate_setups.py`.
 - `python3 tools/validate_setups.py` — static-check every generated setup. Must be **0
   errors** (errors on reserved-name collisions; warns on unused/undefined identifiers,
   unbalanced parens, bad slot counts). Run after every regenerate.
+- `python3 tools/glsl_compile_check.py` — **optional pre-Flame gate**: compiles each setup's
+  GLSL with `glslangValidator` (needs `brew install glslang`) to catch real compile errors the
+  static checker can't. Calibrated against the Flame-verified setups (they all pass), so a clean
+  run is strong evidence a new setup will compile in Flame — but it's a proxy, not a substitute
+  for a real in-Flame load (can't prove Flame's exact dialect/length limits or visual output).
 - `/sync-docs` — project command: does regenerate + validate + drift-check and syncs the
   counts and Live-Flame status across CLAUDE.md and README. Prefer this for routine edits.
 
-There is no test suite, lint, or build beyond the above — `validate_setups.py` is the test.
+There is no unit-test suite or build beyond the above — `validate_setups.py` (static) and
+`glsl_compile_check.py` (compile) are the tests.
 
 ## Golden rule: never hand-edit the setup files
 `tools/generate_setups.py` is the **single source of truth**. All 112 `.pixel_expression_node`
@@ -38,6 +44,8 @@ files and their companion `.md` docs are generated from it.
 ## Key files
 - `tools/generate_setups.py` — generator (SETUPS + CATEGORY + DOCS + EXPECTS + NOTES tables).
 - `tools/validate_setups.py` — static checker.
+- `tools/glsl_compile_check.py` — optional offline GLSL compile-check (`glslangValidator`); a
+  pre-Flame gate for real compile errors. Not stdlib-only — needs `brew install glslang`.
 - `.claude/commands/sync-docs.md` — the `/sync-docs` project command (regenerate, validate,
   drift-check, and sync counts + Live-Flame status across the hand-maintained docs).
 - `README.md` — human index (per-folder tables, colour-management, caveats).
@@ -137,10 +145,14 @@ the library — so if you edit one, they're the most likely to need a fresh live
   `aov_tools/`/`depth_tools/`/`3d_position_tools/`/`uv_distortion/` sets, and `hsl_targeted` —
   the longest single expression in the library).
 - **The 29 setups in the six unconventional categories (`fractals`, `stmap_generators`,
-  `control_surfaces`, `stylization`, `optics_physics`, `diagnostics`) are NOT yet
-  compile-checked in Flame.** They pass `tools/validate_setups.py` (0 errors) and are
-  algorithmically sound, but the static validator can't catch a live GLSL compile error —
-  these need a load/compile pass before they're trusted. Highest-risk to check first:
+  `control_surfaces`, `stylization`, `optics_physics`, `diagnostics`) pass an offline GLSL
+  compile-check but are NOT yet confirmed loading in Flame.** All 112 setups compile cleanly
+  under `tools/glsl_compile_check.py` (`glslangValidator`, `#version 410 core`) — and because the
+  83 already-Flame-verified setups all pass that same check, it's a well-calibrated proxy: a
+  clean compile is strong evidence the 29 will load. What it can't confirm: Flame's exact
+  dialect/expression-length acceptance, OutMatte wiring, and visual correctness. So treat them as
+  **compile-checked, in-Flame confirmation pending** — do a real load before fully trusting.
+  Highest-risk to check first:
   `seven_segment` (its `seg` formula is the longest single expression in the library now),
   the three `fractals` (deeply-nested vec3 formula chains), `heat_haze_map` (inlines the fbm
   builder), `thin_film`/`starfield` (swizzled vec formulas), and `color_blindness` (4 matrix

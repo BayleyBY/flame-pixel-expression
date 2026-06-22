@@ -12,13 +12,19 @@ Tooling (in `tools/`):
 - `tools/validate_setups.py` — sanity sweep: XML well-formedness, slot counts, balanced parens,
   reserved-name collisions, and undefined-identifier checks (catches variable typos).
   Run after any edit; current status: **112 setups, 0 errors, 0 warnings**.
+- `tools/glsl_compile_check.py` — optional pre-Flame gate: compiles every setup's GLSL with
+  `glslangValidator` (`brew install glslang`) to catch real compile errors the static checker
+  can't. Current status: **all 112 compile, 0 errors**. A proxy for — not a replacement for — a
+  real in-Flame load.
 
 **Live-Flame status:** the original **83 setups are confirmed loading and working in Flame** —
 every folder up to `utility/`, including the branchless rgb↔hsv conversions in `hsv_color/`
 and the full `aov_tools/`, `depth_tools/`, `3d_position_tools/`, and `uv_distortion/` sets.
 The **29 setups in the six experimental categories** (`fractals`, `stmap_generators`,
-`control_surfaces`, `stylization`, `optics_physics`, `diagnostics`) pass the validator but are
-**not yet compile-checked in Flame** — load-test them before trusting. Only new or changed
+`control_surfaces`, `stylization`, `optics_physics`, `diagnostics`) pass the validator **and an
+offline GLSL compile-check** (`glsl_compile_check.py`), but are **not yet confirmed loading in
+Flame** — that compile-check is calibrated against the 83 Flame-verified setups (they all pass),
+so it's strong evidence, but do a real load before fully trusting. Only new or changed
 setups need a re-check after editing `tools/generate_setups.py`.
 
 Every setup also has a companion `<name>.md` next to it with **What it does / Use case /
