@@ -10,6 +10,13 @@
 
 **Variables:** `gain` (1.0), `tintR` (1.0), `tintG` (1.0), `tintB` (1.0)
 
+## Node dependencies
+**Pipeline:** beauty (Front 1) + ID mask (Matte 1) → **this node**
+
+Consumes specific **render AOVs/passes** delivered by your renderer or extracted from EXR layers upstream (a Read/MUX/Channel node). The passes are data/light — keep them in the right space (linear for light math) and wire each to the input named below. The **ID/matte pass goes on Matte 1** to isolate a region of the beauty.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Grades **only the region picked by an ID/mask pass**, leaving everything outside untouched —

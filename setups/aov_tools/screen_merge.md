@@ -10,6 +10,13 @@
 
 **Variables:** `gain` (1.0)
 
+## Node dependencies
+**Pipeline:** pass A (Front 1) + pass B (Front 2) → **this node**
+
+Consumes specific **render AOVs/passes** delivered by your renderer or extracted from EXR layers upstream (a Read/MUX/Channel node). The passes are data/light — keep them in the right space (linear for light math) and wire each to the input named below. Screen two passes (e.g. additive glints) in scene-linear.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 **Screens** a glow/bloom pass onto the beauty — `1 - (1-base)(1-over)` — the standard way to

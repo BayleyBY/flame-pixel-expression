@@ -10,6 +10,13 @@
 
 **Variables:** `zoom` (1.0), `panX` (0.0), `panY` (0.0)
 
+## Node dependencies
+**Pipeline:** **this node** → **STMap**
+
+Outputs a 0..1 **ST/UV map** (`red`=U, `green`=V) — *coordinates*, not a warped image. On its own it looks like a red/green gradient and changes nothing. Wire its output into a downstream **STMap** node's map/UV input, and the plate you want warped into the STMap's source — the STMap does the re-sample (the pixel gather this node can't do). **Tag the map Raw/Data**; colour-managing a coordinate map corrupts the warp. Zoom/pan a source through the STMap (`zoom`, `panX`, `panY`).
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 A zoom / pan **ST map** — repositions a source through an STMap node instead of a Transform.

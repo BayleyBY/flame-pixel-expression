@@ -27,6 +27,9 @@ docs can't drift from the setups.
 
 See `documentation/flame_pixel_expression_file_format.md` for the file format and
 `documentation/flame_pixel_expression_translations.md` for the Nuke→Flame GLSL mapping.
+**Setups that need another node** (ST-map→STMap, CoC→Defocus, depth/P/normal/AOV/crypto
+consumers, the pack/unpack pair, colour-management adjacency) are documented with exact Batch
+wiring in `documentation/node_dependencies.md`.
 
 Repo layout — the loadable library is under `setups/`, the generator/checker under `tools/`,
 and reference docs under `documentation/`:

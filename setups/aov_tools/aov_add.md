@@ -10,6 +10,13 @@
 
 **Variables:** `gainA` (1.0), `gainB` (1.0)
 
+## Node dependencies
+**Pipeline:** pass A (Front 1) + pass B (Front 2) → **this node**
+
+Consumes specific **render AOVs/passes** delivered by your renderer or extracted from EXR layers upstream (a Read/MUX/Channel node). The passes are data/light — keep them in the right space (linear for light math) and wire each to the input named below. Recombine light AOVs by addition (work in scene-linear).
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Sums two light/AOV passes with a per-pass gain — `pass1 * gainA + pass2 * gainB`. The atom

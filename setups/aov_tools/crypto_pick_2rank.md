@@ -10,6 +10,13 @@
 
 **Variables:** `id` (0.0), `tol` (1e-05)
 
+## Node dependencies
+**Pipeline:** crypto value (Front 1) + crypto coverage (Matte 1) → **this node**
+
+Needs **Cryptomatte rank layers** extracted upstream (a Cryptomatte/Channel node): the rank's value on Front 1, its coverage on Matte 1. It picks the object hash `id` from those ranks — no extracted ranks, no matte.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Extracts a coverage **matte for one object** from a single Cryptomatte layer (2 ranks), by

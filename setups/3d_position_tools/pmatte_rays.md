@@ -10,6 +10,13 @@
 
 **Variables:** `cenR` (0), `cenB` (0), `rays` (8)
 
+## Node dependencies
+**Pipeline:** P-world pass (Front 1) → **this node** → (matte to comp)
+
+Reads a **world-position (P) pass on Front 1** (RGB encode XYZ). Set the centre/extent variables to the world point/size you want to isolate; without a P pass it produces nothing meaningful. Tip: test without a render by feeding the `stmap` node into Front 1.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 A radial **fan of rays on the ground (X–Z) plane**, centred on a world point. It uses only

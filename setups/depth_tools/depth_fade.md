@@ -10,6 +10,13 @@
 
 **Variables:** `near` (0.0), `far` (1.0)
 
+## Node dependencies
+**Pipeline:** beauty (Front 1) + depth pass (Matte 1) → **this node**
+
+Reads the **Z/depth pass on Matte 1** (the library convention — `m1`). Raw Z is in scene units, so set the normalising range to your near/far. No depth on Matte 1 = no useful result (input wiring is never saved in the setup file — re-wire it in Batch every time). Also needs the **beauty on Front 1**.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Fades the beauty's **colour and alpha together** to nothing with distance — a premultiplied

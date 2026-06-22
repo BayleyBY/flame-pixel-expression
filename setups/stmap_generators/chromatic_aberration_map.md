@@ -10,6 +10,13 @@
 
 **Variables:** `amount` (0.02)
 
+## Node dependencies
+**Pipeline:** **this node** → **STMap** (per channel)
+
+Outputs the **red** channel's ST/UV in `red`/`green` and the **radial-offset magnitude** in `blue` — one ST map can't carry three different per-channel UVs. Two downstream options: (1) **per-channel STMap** — generate the map three times (red as-is; a green variant with `amount`=0; a blue variant with `-amount`), STMap each colour channel of the plate, recombine; or (2) feed `blue` into a **defringe** node as its strength map (simpler, approximate). Tag Raw/Data.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 A **chromatic-aberration ST map** — `red = U, green = V` for a downstream **STMap node**. Output

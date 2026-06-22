@@ -10,6 +10,13 @@
 
 **Variables:** `near` (0.0), `far` (1.0), `strength` (0.0), `tintR` (0.6), `tintG` (0.8), `tintB` (1.4)
 
+## Node dependencies
+**Pipeline:** beauty (Front 1) + depth pass (Matte 1) → **this node** → (matte to comp)
+
+Reads the **Z/depth pass on Matte 1** (the library convention — `m1`). Raw Z is in scene units, so set the normalising range to your near/far. No depth on Matte 1 = no useful result (input wiring is never saved in the setup file — re-wire it in Batch every time). Two products from one node: RGB is a depth-tinted grade of the beauty, while OutMatte is an independent depth-slab key (needs a clip on Matte 1 for OutMatte to render).
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 A demonstration that the node makes **two products at once**: the RGB expression and the Matte

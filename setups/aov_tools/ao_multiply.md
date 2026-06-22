@@ -10,6 +10,13 @@
 
 **Variables:** `amount` (1.0), `aoGamma` (1.0)
 
+## Node dependencies
+**Pipeline:** beauty (Front 1) + AO (Matte 1) → **this node**
+
+Consumes specific **render AOVs/passes** delivered by your renderer or extracted from EXR layers upstream (a Read/MUX/Channel node). The passes are data/light — keep them in the right space (linear for light math) and wire each to the input named below. The **AO pass goes on Matte 1** (it's data, not a matte to key).
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Multiplies the beauty by an **ambient-occlusion** pass, with controls to dial it in:

@@ -10,6 +10,13 @@
 
 **Variables:** `gain` (5.0)
 
+## Node dependencies
+**Pipeline:** shot (Front 1) + aligned clean plate (Front 2) → **this node** → (matte to comp)
+
+Keys what *changed* between the shot (Front 1) and a **clean plate** (Front 2) — so it needs that aligned clean plate wired upstream. `gain` scales the difference.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 A **difference key against a clean plate**: the RGB distance between Front 1 and Front 2,

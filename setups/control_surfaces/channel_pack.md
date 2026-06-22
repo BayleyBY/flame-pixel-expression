@@ -10,6 +10,13 @@
 
 _No variables._
 
+## Node dependencies
+**Pipeline:** Matte 1 + Matte 2 + Front 1 → **this node** → `channel_unpack`
+
+Ferries three single-channel signals down **one** RGB connection (red = Matte 1, green = Matte 2, blue = Front 1 luma). Useless without its partner **`channel_unpack`** at the far end to recover them.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 A **3-into-1 muxer**: stuff three unrelated single-channel signals into one RGB so they ride a

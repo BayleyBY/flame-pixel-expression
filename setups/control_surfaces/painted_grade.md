@@ -10,6 +10,13 @@
 
 **Variables:** `expRange` (2.0), `hueRange` (1.0), `satRange` (1.0)
 
+## Node dependencies
+**Pipeline:** image (Front 1) + painted control map (Front 2) → **this node**
+
+The grade is driven by a **painted control map on Front 2**: `r2` = local exposure, `g2` = local hue, `b2` = local saturation (flat 0.5 grey = neutral). The upstream 'node' is wherever you paint/generate that map — Paint, a roto fill, a ramp, or another generator.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 A grade whose **parameters are painted, not global**. The usual grade node has one exposure,

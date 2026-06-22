@@ -48,6 +48,9 @@ files and their companion `.md` docs are generated from it.
   NOT delete). Its `.p` proxy thumbnail is gitignored — Flame regenerates it on load.
 - `documentation/flame_pixel_expression_file_format.md` — reverse-engineered file format.
 - `documentation/flame_pixel_expression_translations.md` — Nuke→Flame GLSL mapping.
+- `documentation/node_dependencies.md` — every setup that needs an upstream pass or a
+  downstream node (ST-map→STMap, CoC→Defocus, depth/P/normal/AOV/crypto consumers, paired
+  pack/unpack, colour-management adjacency) with exact Batch wiring. Hand-maintained.
 - `documentation/nuke_expressions_cheatsheet.md` — source Nuke reference.
 - `documentation/flame_feature_showcase_setup.md` — recipe for a hand-built setup that
   exercises every node feature (front blend, vignette, sat/gamma, ring×ray matte).

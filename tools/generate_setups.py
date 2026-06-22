@@ -3908,6 +3908,187 @@ through a comp.
 }
 
 
+# --- Per-setup node-dependency notes (rendered into each .md as "## Node dependencies") ---
+# Setups that are one stage of a Batch graph: they need a specific pass wired UPSTREAM and/or
+# emit an intermediate a DOWNSTREAM node must consume. Full wiring guide + diagrams:
+# documentation/node_dependencies.md (hand-maintained — keep it and these entries in sync).
+_DEP_REF = "See `documentation/node_dependencies.md` for the full wiring guide."
+
+
+def _dep(pipeline, body):
+    """One dependency block: a one-line Pipeline arrow + explanation + doc cross-ref."""
+    return f"**Pipeline:** {pipeline}\n\n{body}\n\n{_DEP_REF}"
+
+
+# Shared bodies (reused across a family of setups).
+_DEP_STMAP = (
+    "Outputs a 0..1 **ST/UV map** (`red`=U, `green`=V) — *coordinates*, not a warped image. On "
+    "its own it looks like a red/green gradient and changes nothing. Wire its output into a "
+    "downstream **STMap** node's map/UV input, and the plate you want warped into the STMap's "
+    "source — the STMap does the re-sample (the pixel gather this node can't do). **Tag the "
+    "map Raw/Data**; colour-managing a coordinate map corrupts the warp.")
+_DEP_DEPTH = (
+    "Reads the **Z/depth pass on Matte 1** (the library convention — `m1`). Raw Z is in scene "
+    "units, so set the normalising range to your near/far. No depth on Matte 1 = no useful "
+    "result (input wiring is never saved in the setup file — re-wire it in Batch every time).")
+_DEP_DEFOCUS = (
+    "Emits a per-pixel **blur amount** (0..1), not a blurred image — the node can't gather "
+    "neighbours. Feed it into a downstream **variable-blur / Defocus** node as its blur-amount "
+    "(matte) input, with the plate on that node's front. Output is data — tag it Raw/Data.")
+_DEP_P = (
+    "Reads a **world-position (P) pass on Front 1** (RGB encode XYZ). Set the centre/extent "
+    "variables to the world point/size you want to isolate; without a P pass it produces "
+    "nothing meaningful. Tip: test without a render by feeding the `stmap` node into Front 1.")
+_DEP_NORMAL = (
+    "Reads a **normal pass on Front 1**, expected in **-1..1**. If yours is 0..1-encoded "
+    "(common in EXRs), remap upstream (`*2-1`) or inline `vec3(r1,g1,b1)*2.0-1.0`.")
+_DEP_AOV = (
+    "Consumes specific **render AOVs/passes** delivered by your renderer or extracted from EXR "
+    "layers upstream (a Read/MUX/Channel node). The passes are data/light — keep them in the "
+    "right space (linear for light math) and wire each to the input named below.")
+
+
+DEPENDS = {
+    # ---- Downstream STMap: coordinate-map generators ----
+    "stmap": _dep("**this node** → **STMap**",
+                  _DEP_STMAP + " `stmap` is the *identity* map: warps nothing by itself — it's "
+                  "the baseline you offset to build a custom warp, and a handy test source for "
+                  "the P-matte setups."),
+    "lens_distort": _dep("**this node** → **STMap**",
+                         _DEP_STMAP + " Adds radial barrel (`k1<0`) / pincushion (`k1>0`) "
+                         "distortion; typical job is baking a plate's measured distortion onto a "
+                         "clean CG render."),
+    "lens_undistort": _dep("**this node** → **STMap**",
+                           _DEP_STMAP + " Approximate *inverse* of `lens_distort`. For a clean "
+                           "round-trip, undistort → work → re-apply `lens_distort` with the same "
+                           "coefficients rather than trusting a perfect inverse."),
+    "anamorphic_unsqueeze": _dep("**this node** → **STMap**",
+                                 _DEP_STMAP + " Horizontal unsqueeze (e.g. `squeeze` 2.0 for 2x "
+                                 "anamorphic)."),
+    "uv_transform": _dep("**this node** → **STMap**",
+                         _DEP_STMAP + " Zoom/pan a source through the STMap (`zoom`, `panX`, "
+                         "`panY`)."),
+    "polar_to_cartesian": _dep("**this node** → **STMap**",
+                               _DEP_STMAP + " Polar/rectangular remap — tiny-planet, mirror-ball, "
+                               "360 reframe (`twist` rotates, `zoom` scales the radius)."),
+    "kaleidoscope_map": _dep("**this node** → **STMap**",
+                             _DEP_STMAP + " Mirror-folds angular space into `segments` wedges "
+                             "around Centre; `rot` spins it."),
+    "lens_distort_map": _dep("**this node** → **STMap**",
+                             _DEP_STMAP + " Barrel/pincushion (`k1`,`k2`) plus an anamorphic "
+                             "`squeeze`; negate `k1`/`k2` to undistort."),
+    "glitch_block_map": _dep("**this node** → **STMap**",
+                             _DEP_STMAP + " Block-shuffle / datamosh — **keyframe `corruption`** "
+                             "(0→1) to trigger; `seed` reshuffles the blocks."),
+    "heat_haze_map": _dep("**this node** → **STMap**",
+                          _DEP_STMAP + " fbm-driven shimmer — **keyframe `seed`** to animate the "
+                          "wobble; `amp` sets strength."),
+    "chromatic_aberration_map": _dep("**this node** → **STMap** (per channel)",
+        "Outputs the **red** channel's ST/UV in `red`/`green` and the **radial-offset "
+        "magnitude** in `blue` — one ST map can't carry three different per-channel UVs. Two "
+        "downstream options: (1) **per-channel STMap** — generate the map three times (red "
+        "as-is; a green variant with `amount`=0; a blue variant with `-amount`), STMap each "
+        "colour channel of the plate, recombine; or (2) feed `blue` into a **defringe** node as "
+        "its strength map (simpler, approximate). Tag Raw/Data."),
+
+    # ---- Downstream variable-blur / Defocus ----
+    "coc_from_depth": _dep("depth pass (Matte 1) → **this node** → variable-blur / Defocus",
+                           _DEP_DEFOCUS + " It reads the **depth pass on Matte 1** and outputs a "
+                           "circle-of-confusion radius from `focusDepth` / `focusRange` / "
+                           "`maxBlur` — so it needs depth *in* and a defocus node *out*. Set "
+                           "`focusDepth` to your focal plane's depth value."),
+    "depth_dof_mask": _dep("depth pass (Matte 1) → **this node** → variable-blur / Defocus",
+                           _DEP_DEFOCUS + " A 0..1 in-focus/out-of-focus **mask** from the depth "
+                           "pass on Matte 1 — art-directed falloff rather than a physical CoC."),
+
+    # ---- Upstream depth pass (Matte 1) ----
+    "depth_normalize": _dep("depth pass (Matte 1) → **this node**", _DEP_DEPTH),
+    "depth_matte": _dep("depth pass (Matte 1) → **this node**", _DEP_DEPTH +
+                        " Output is a matte (RGB + OutMatte) you carry into a downstream comp."),
+    "depth_contours": _dep("depth pass (Matte 1) → **this node**", _DEP_DEPTH),
+    "depth_posterize": _dep("depth pass (Matte 1) → **this node**", _DEP_DEPTH),
+    "depth_fog": _dep("beauty (Front 1) + depth pass (Matte 1) → **this node**", _DEP_DEPTH +
+                      " Also needs the **beauty on Front 1** — it tints by depth."),
+    "depth_fade": _dep("beauty (Front 1) + depth pass (Matte 1) → **this node**", _DEP_DEPTH +
+                       " Also needs the **beauty on Front 1**."),
+    "depth_grade": _dep("beauty (Front 1) + depth pass (Matte 1) → **this node**", _DEP_DEPTH +
+                        " Also needs the **beauty on Front 1**."),
+    "depth_mix": _dep("near plate (Front 1) + far plate (Front 2) + depth pass (Matte 1) → **this node**",
+                      _DEP_DEPTH + " Blends **two plates** (Front 1 near, Front 2 far) at a depth "
+                      "threshold."),
+    "dual_output_depth": _dep("beauty (Front 1) + depth pass (Matte 1) → **this node** → (matte to comp)",
+                              _DEP_DEPTH + " Two products from one node: RGB is a depth-tinted "
+                              "grade of the beauty, while OutMatte is an independent depth-slab "
+                              "key (needs a clip on Matte 1 for OutMatte to render)."),
+
+    # ---- Upstream world-position (P) pass (Front 1) ----
+    "pmatte_sphere": _dep("P-world pass (Front 1) → **this node** → (matte to comp)", _DEP_P),
+    "pmatte_rings": _dep("P-world pass (Front 1) → **this node** → (matte to comp)", _DEP_P),
+    "pmatte_rays": _dep("P-world pass (Front 1) → **this node** → (matte to comp)", _DEP_P),
+    "box_matte": _dep("P-world pass (Front 1) → **this node** → (matte to comp)", _DEP_P),
+
+    # ---- Upstream normal pass (Front 1) ----
+    "normal_relight": _dep("normal pass (Front 1) → **this node**", _DEP_NORMAL +
+                           " Output is scene-linear light to add/comp downstream."),
+    "fresnel_facing": _dep("camera-space normal pass (Front 1) → **this node**", _DEP_NORMAL +
+                           " It additionally wants a **camera-space** normal (so `.z` faces the "
+                           "lens); world-space normals need a camera transform this node can't do."),
+
+    # ---- Upstream render AOVs ----
+    "albedo_divide": _dep("beauty (Front 1) + albedo (Front 2) → **this node**", _DEP_AOV +
+                          " De-lights: beauty ÷ albedo → lighting."),
+    "albedo_multiply": _dep("albedo (Front 1) + lighting (Front 2) → **this node**", _DEP_AOV +
+                            " Re-lights: albedo × lighting → beauty."),
+    "ao_multiply": _dep("beauty (Front 1) + AO (Matte 1) → **this node**", _DEP_AOV +
+                        " The **AO pass goes on Matte 1** (it's data, not a matte to key)."),
+    "aov_add": _dep("pass A (Front 1) + pass B (Front 2) → **this node**", _DEP_AOV +
+                    " Recombine light AOVs by addition (work in scene-linear)."),
+    "aov_grade_add": _dep("running sum (Front 1) + next pass (Front 2) → **this node**", _DEP_AOV +
+                          " Grade one pass and add it back to the sum (scene-linear)."),
+    "screen_merge": _dep("pass A (Front 1) + pass B (Front 2) → **this node**", _DEP_AOV +
+                         " Screen two passes (e.g. additive glints) in scene-linear."),
+    "id_isolate": _dep("beauty (Front 1) + ID mask (Matte 1) → **this node**", _DEP_AOV +
+                       " The **ID/matte pass goes on Matte 1** to isolate a region of the beauty."),
+    "crypto_pick_2rank": _dep("crypto value (Front 1) + crypto coverage (Matte 1) → **this node**",
+                              "Needs **Cryptomatte rank layers** extracted upstream (a Cryptomatte/"
+                              "Channel node): the rank's value on Front 1, its coverage on Matte 1. "
+                              "It picks the object hash `id` from those ranks — no extracted ranks, "
+                              "no matte."),
+    "crypto_pick_4rank": _dep("crypto ranks (Front 1 + Matte 1, Front 2 + Matte 2) → **this node**",
+                              "Needs **two Cryptomatte rank pairs** extracted upstream — value/"
+                              "coverage on Front 1/Matte 1 and Front 2/Matte 2 — for a cleaner edge "
+                              "across four ranks."),
+
+    # ---- Upstream clean plate / painted control map ----
+    "difference_matte": _dep("shot (Front 1) + aligned clean plate (Front 2) → **this node** → (matte to comp)",
+                             "Keys what *changed* between the shot (Front 1) and a **clean plate** "
+                             "(Front 2) — so it needs that aligned clean plate wired upstream. "
+                             "`gain` scales the difference."),
+    "painted_grade": _dep("image (Front 1) + painted control map (Front 2) → **this node**",
+                          "The grade is driven by a **painted control map on Front 2**: `r2` = "
+                          "local exposure, `g2` = local hue, `b2` = local saturation (flat 0.5 grey "
+                          "= neutral). The upstream 'node' is wherever you paint/generate that map "
+                          "— Paint, a roto fill, a ramp, or another generator."),
+
+    # ---- Paired Pixel Expression nodes ----
+    "channel_pack": _dep("Matte 1 + Matte 2 + Front 1 → **this node** → `channel_unpack`",
+                         "Ferries three single-channel signals down **one** RGB connection (red = "
+                         "Matte 1, green = Matte 2, blue = Front 1 luma). Useless without its "
+                         "partner **`channel_unpack`** at the far end to recover them."),
+    "channel_unpack": _dep("`channel_pack` output (Front 1) → **this node**",
+                           "The other half of the pair: takes a **packed RGB** (from "
+                           "`channel_pack`) on Front 1 and routes one channel to OutMatte (`pick` = "
+                           "0/1/2 selects r/g/b)."),
+    "rgb_to_hsv": _dep("**this node** → an HSV consumer (e.g. `hsv_to_rgb`)",
+                       "Emits an **HSV-encoded** image (H,S,V in R,G,B) — not a display picture. "
+                       "Bracket a hand-built HSV operation with `rgb_to_hsv` … `hsv_to_rgb`, or "
+                       "feed any node that expects HSV."),
+    "hsv_to_rgb": _dep("HSV source (e.g. `rgb_to_hsv`) → **this node**",
+                       "Expects an **HSV-encoded** input, which in practice comes from "
+                       "`rgb_to_hsv` (or another HSV source) upstream."),
+}
+
+
 def _fmt_vars(variables):
     if not variables:
         return "_No variables._"
@@ -3928,6 +4109,8 @@ def write_doc(s):
         f"**Expects:** {EXPECTS.get(name, _ANY)}\n\n"
         f"{_fmt_vars(s.get('variables'))}\n"
     )
+    if name in DEPENDS:
+        md += "\n## Node dependencies\n" + DEPENDS[name].strip() + "\n"
     if name in NOTES:
         md += "\n" + NOTES[name].strip() + "\n"
     path = os.path.join(OUT_DIR, s["category"], f"{name}.md")

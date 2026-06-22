@@ -10,6 +10,13 @@
 
 _No variables._
 
+## Node dependencies
+**Pipeline:** HSV source (e.g. `rgb_to_hsv`) → **this node**
+
+Expects an **HSV-encoded** input, which in practice comes from `rgb_to_hsv` (or another HSV source) upstream.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Converts **HSV → RGB** — the inverse of `rgb_to_hsv`. Expects Front 1 to hold **H on red, S on

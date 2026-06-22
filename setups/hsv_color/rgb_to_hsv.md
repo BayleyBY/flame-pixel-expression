@@ -10,6 +10,13 @@
 
 _No variables._
 
+## Node dependencies
+**Pipeline:** **this node** → an HSV consumer (e.g. `hsv_to_rgb`)
+
+Emits an **HSV-encoded** image (H,S,V in R,G,B) — not a display picture. Bracket a hand-built HSV operation with `rgb_to_hsv` … `hsv_to_rgb`, or feed any node that expects HSV.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Converts RGB → **HSV**, packing **H on red, S on green, V on blue** (branchless Hocevar

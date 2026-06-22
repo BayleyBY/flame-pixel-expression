@@ -10,6 +10,13 @@
 
 **Variables:** `k1` (0.1), `k2` (0.0)
 
+## Node dependencies
+**Pipeline:** **this node** → **STMap**
+
+Outputs a 0..1 **ST/UV map** (`red`=U, `green`=V) — *coordinates*, not a warped image. On its own it looks like a red/green gradient and changes nothing. Wire its output into a downstream **STMap** node's map/UV input, and the plate you want warped into the STMap's source — the STMap does the re-sample (the pixel gather this node can't do). **Tag the map Raw/Data**; colour-managing a coordinate map corrupts the warp. Adds radial barrel (`k1<0`) / pincushion (`k1>0`) distortion; typical job is baking a plate's measured distortion onto a clean CG render.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Generates a **radial distortion ST map** (barrel / pincushion). Like everything in

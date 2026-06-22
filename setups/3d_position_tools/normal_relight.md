@@ -10,6 +10,13 @@
 
 **Variables:** `lx` (0.0), `ly` (0.0), `lz` (1.0)
 
+## Node dependencies
+**Pipeline:** normal pass (Front 1) → **this node**
+
+Reads a **normal pass on Front 1**, expected in **-1..1**. If yours is 0..1-encoded (common in EXRs), remap upstream (`*2-1`) or inline `vec3(r1,g1,b1)*2.0-1.0`. Output is scene-linear light to add/comp downstream.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 A **Lambert (N·L) relight** from a normal pass — add or re-aim a light in comp, no re-render.

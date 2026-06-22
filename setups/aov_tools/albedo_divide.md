@@ -10,6 +10,13 @@
 
 _No variables._
 
+## Node dependencies
+**Pipeline:** beauty (Front 1) + albedo (Front 2) → **this node**
+
+Consumes specific **render AOVs/passes** delivered by your renderer or extracted from EXR layers upstream (a Read/MUX/Channel node). The passes are data/light — keep them in the right space (linear for light math) and wire each to the input named below. De-lights: beauty ÷ albedo → lighting.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Divides the beauty by its **albedo** to recover the **lighting alone** (illumination,

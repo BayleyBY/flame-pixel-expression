@@ -10,6 +10,13 @@
 
 **Variables:** `k1` (0.1), `k2` (0.0)
 
+## Node dependencies
+**Pipeline:** **this node** → **STMap**
+
+Outputs a 0..1 **ST/UV map** (`red`=U, `green`=V) — *coordinates*, not a warped image. On its own it looks like a red/green gradient and changes nothing. Wire its output into a downstream **STMap** node's map/UV input, and the plate you want warped into the STMap's source — the STMap does the re-sample (the pixel gather this node can't do). **Tag the map Raw/Data**; colour-managing a coordinate map corrupts the warp. Approximate *inverse* of `lens_distort`. For a clean round-trip, undistort → work → re-apply `lens_distort` with the same coefficients rather than trusting a perfect inverse.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 The **approximate inverse** of `lens_distort` — same radial polynomial, but it divides where

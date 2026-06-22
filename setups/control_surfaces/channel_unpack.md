@@ -10,6 +10,13 @@
 
 **Variables:** `pick` (0)
 
+## Node dependencies
+**Pipeline:** `channel_pack` output (Front 1) → **this node**
+
+The other half of the pair: takes a **packed RGB** (from `channel_pack`) on Front 1 and routes one channel to OutMatte (`pick` = 0/1/2 selects r/g/b).
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 The **demuxer** for `channel_pack` (or any packed RGB). It passes the full RGB through

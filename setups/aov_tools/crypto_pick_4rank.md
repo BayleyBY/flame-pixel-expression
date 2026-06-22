@@ -10,6 +10,13 @@
 
 **Variables:** `id` (0.0), `tol` (1e-05)
 
+## Node dependencies
+**Pipeline:** crypto ranks (Front 1 + Matte 1, Front 2 + Matte 2) → **this node**
+
+Needs **two Cryptomatte rank pairs** extracted upstream — value/coverage on Front 1/Matte 1 and Front 2/Matte 2 — for a cleaner edge across four ranks.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Same object-hash pick as `crypto_pick_2rank`, but reads **two** Cryptomatte layers (4 ranks)

@@ -10,6 +10,13 @@
 
 **Variables:** `focusDepth` (5.0), `focusRange` (5.0), `maxBlur` (1.0)
 
+## Node dependencies
+**Pipeline:** depth pass (Matte 1) → **this node** → variable-blur / Defocus
+
+Emits a per-pixel **blur amount** (0..1), not a blurred image — the node can't gather neighbours. Feed it into a downstream **variable-blur / Defocus** node as its blur-amount (matte) input, with the plate on that node's front. Output is data — tag it Raw/Data. It reads the **depth pass on Matte 1** and outputs a circle-of-confusion radius from `focusDepth` / `focusRange` / `maxBlur` — so it needs depth *in* and a defocus node *out*. Set `focusDepth` to your focal plane's depth value.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 **NOT a UV map** — this outputs a **per-pixel circle-of-confusion (blur-amount) map**, written

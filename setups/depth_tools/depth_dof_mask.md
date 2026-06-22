@@ -10,6 +10,13 @@
 
 **Variables:** `focus` (0.5), `range` (0.2)
 
+## Node dependencies
+**Pipeline:** depth pass (Matte 1) → **this node** → variable-blur / Defocus
+
+Emits a per-pixel **blur amount** (0..1), not a blurred image — the node can't gather neighbours. Feed it into a downstream **variable-blur / Defocus** node as its blur-amount (matte) input, with the plate on that node's front. Output is data — tag it Raw/Data. A 0..1 in-focus/out-of-focus **mask** from the depth pass on Matte 1 — art-directed falloff rather than a physical CoC.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Builds a **blur-amount mask** for depth of field: 0 at the `focus` plane, ramping to 1 as

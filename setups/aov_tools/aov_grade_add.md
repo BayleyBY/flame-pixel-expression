@@ -10,6 +10,13 @@
 
 **Variables:** `exposure` (1.0), `tintR` (1.0), `tintG` (1.0), `tintB` (1.0)
 
+## Node dependencies
+**Pipeline:** running sum (Front 1) + next pass (Front 2) → **this node**
+
+Consumes specific **render AOVs/passes** delivered by your renderer or extracted from EXR layers upstream (a Read/MUX/Channel node). The passes are data/light — keep them in the right space (linear for light math) and wire each to the input named below. Grade one pass and add it back to the sum (scene-linear).
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 The core **"isolate a pass, art-direct it, put it back"** move: `running_beauty + pass *

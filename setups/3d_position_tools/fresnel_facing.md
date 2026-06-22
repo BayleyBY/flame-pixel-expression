@@ -10,6 +10,13 @@
 
 **Variables:** `power` (2.0)
 
+## Node dependencies
+**Pipeline:** camera-space normal pass (Front 1) → **this node**
+
+Reads a **normal pass on Front 1**, expected in **-1..1**. If yours is 0..1-encoded (common in EXRs), remap upstream (`*2-1`) or inline `vec3(r1,g1,b1)*2.0-1.0`. It additionally wants a **camera-space** normal (so `.z` faces the lens); world-space normals need a camera transform this node can't do.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 A **rim / facing-ratio matte** from a **camera-space** normal pass: bright where surfaces

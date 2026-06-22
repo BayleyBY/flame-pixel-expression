@@ -10,6 +10,13 @@
 
 **Variables:** `zThresh` (0.5), `soft` (0.05)
 
+## Node dependencies
+**Pipeline:** near plate (Front 1) + far plate (Front 2) + depth pass (Matte 1) → **this node**
+
+Reads the **Z/depth pass on Matte 1** (the library convention — `m1`). Raw Z is in scene units, so set the normalising range to your near/far. No depth on Matte 1 = no useful result (input wiring is never saved in the setup file — re-wire it in Batch every time). Blends **two plates** (Front 1 near, Front 2 far) at a depth threshold.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Composites **Front 1 (near) over Front 2 (far)** using depth as the switch — a poor-man's

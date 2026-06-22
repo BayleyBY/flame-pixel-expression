@@ -10,6 +10,13 @@
 
 _No variables._
 
+## Node dependencies
+**Pipeline:** albedo (Front 1) + lighting (Front 2) → **this node**
+
+Consumes specific **render AOVs/passes** delivered by your renderer or extracted from EXR layers upstream (a Read/MUX/Channel node). The passes are data/light — keep them in the right space (linear for light math) and wire each to the input named below. Re-lights: albedo × lighting → beauty.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Multiplies a (possibly graded) **albedo** by a **lighting** pass — the recombine/relight half

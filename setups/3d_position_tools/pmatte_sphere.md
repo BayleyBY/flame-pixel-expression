@@ -10,6 +10,13 @@
 
 **Variables:** `cenR` (0), `cenG` (0), `cenB` (0), `prad` (1.0)
 
+## Node dependencies
+**Pipeline:** P-world pass (Front 1) → **this node** → (matte to comp)
+
+Reads a **world-position (P) pass on Front 1** (RGB encode XYZ). Set the centre/extent variables to the world point/size you want to isolate; without a P pass it produces nothing meaningful. Tip: test without a render by feeding the `stmap` node into Front 1.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 A soft **spherical matte anchored in 3D world space** — white at a world point, falling off
