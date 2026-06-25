@@ -1,31 +1,34 @@
 # Pixel Expression Setup Library
 
-**112 ready-to-load `.pixel_expression_node` setups** — 83 translating the best Nuke
-expression examples to Flame GLSL, plus a later wave of 29 **unconventional / experimental**
-setups (fractals, ST-map generators, painted control surfaces, stylization, optics/physics,
-diagnostics). Load via the node's setup browser. **Connect inputs in Batch** — wiring isn't
-stored in these files.
+**155 ready-to-load `.pixel_expression_node` setups** — 83 translating the best Nuke
+expression examples to Flame GLSL, plus 72 **unconventional / experimental / utility** setups
+(fractals, ST-map generators, painted control surfaces, stylization, optics/physics,
+diagnostics, and a 2026 expansion of scalar-mappers, calibration charts & a physical lens CoC).
+Load via the node's setup browser. **Connect inputs in Batch** — wiring isn't stored in these
+files.
 
 Tooling (in `tools/`):
 - `tools/generate_setups.py` — single source of truth; edit a dict + the `CATEGORY` map and
   re-run to regenerate every file. Handles XML-escaping, slot padding, and folders.
 - `tools/validate_setups.py` — sanity sweep: XML well-formedness, slot counts, balanced parens,
   reserved-name collisions, and undefined-identifier checks (catches variable typos).
-  Run after any edit; current status: **112 setups, 0 errors, 0 warnings**.
+  Run after any edit; current status: **155 setups, 0 errors, 0 warnings**.
 - `tools/glsl_compile_check.py` — optional pre-Flame gate: compiles every setup's GLSL with
   `glslangValidator` (`brew install glslang`) to catch real compile errors the static checker
-  can't. Current status: **all 112 compile, 0 errors**. A proxy for — not a replacement for — a
+  can't. Current status: **all 155 compile, 0 errors**. A proxy for — not a replacement for — a
   real in-Flame load.
 
 **Live-Flame status:** the original **83 setups are confirmed loading and working in Flame** —
 every folder up to `utility/`, including the branchless rgb↔hsv conversions in `hsv_color/`
 and the full `aov_tools/`, `depth_tools/`, `3d_position_tools/`, and `uv_distortion/` sets.
-The **29 setups in the six experimental categories** (`fractals`, `stmap_generators`,
-`control_surfaces`, `stylization`, `optics_physics`, `diagnostics`) pass the validator **and an
-offline GLSL compile-check** (`glsl_compile_check.py`), but are **not yet confirmed loading in
-Flame** — that compile-check is calibrated against the 83 Flame-verified setups (they all pass),
-so it's strong evidence, but do a real load before fully trusting. Only new or changed
-setups need a re-check after editing `tools/generate_setups.py`.
+The **other 72 setups** — the six experimental categories (`fractals`, `stmap_generators`,
+`control_surfaces`, `stylization`, `optics_physics`, `diagnostics`) plus the **2026-06-25
+expansion (Tiers 1–4)** — scalar-mappers, log curves, selective-saturation, matte math, QC tools,
+AOV/technical-pass tools, and pattern/texture generators — pass the
+validator **and an offline GLSL compile-check** (`glsl_compile_check.py`), but are **not yet
+confirmed loading in Flame** — that compile-check is calibrated against the 83 Flame-verified
+setups (they all pass), so it's strong evidence, but do a real load before fully trusting. Only
+new or changed setups need a re-check after editing `tools/generate_setups.py`.
 
 Every setup also has a companion `<name>.md` next to it with **What it does / Use case /
 Inputs / Expects (colour space) / Variables** — generated from the same script, so the
@@ -62,6 +65,7 @@ documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
 | `alpha_fringe` | isolate matte edges | Matte 1 | — |
 | `luma_key` | soft luminance key (Result + OutMatte) | Front 1 | `lo` 0.3, `hi` 0.7 |
 | `difference_matte` | clip vs clean-plate diff key | Front 1 + Front 2 | `gain` 5.0 |
+| `garbage_gradient_matte` | rotated linear-gradient garbage matte | none (uses Centre) | `angle` 0.0, `offset` 0.0, `feather` 100 |
 
 ### `pattern_generators/`
 | File | Nuke origin | Inputs needed | Variables (defaults) |
@@ -72,12 +76,21 @@ documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
 | `checkerboard` | checker generator | none | `size` 64, + colours |
 | `bricks` | offset brick generator | none | `bw` 128, `bh` 64, + colours |
 | `noise_random` | per-pixel hash noise | none | — |
+| `point_grid` | dot lattice generator | none | `spacing` 64, `dotR` 6, + colours |
+| `zone_plate` | `sin(r²)` Fresnel-ring test target | none (uses Centre) | `freq` 0.001, + colours |
+| `hex_grid` | hexagonal honeycomb tiling | none | `hexSize` 60, `lineW` 0.06, + colours |
+| `triangle_tiling` | triangular / rhombille op-art grid | none | `triSize` 60, `lineW` 0.08, + colours |
+| `wood_grain` | noise-warped tree rings (brown/tan default) | none (uses Centre) | `freq` 0.02, `turb` 4.0, + colours |
+| `marble` | turbulence-veined marble (stone default) | none | `freq` 0.05, `turb` 6.0, + colours |
+| `log_polar_spiral` | self-similar log spiral (grayscale) | none (uses Centre) | `freq` 8.0, `arms` 5.0, `twist` 0.0 (anim) |
 
-**Two colours** (all except `noise_random`): the pattern blends colour **A** `aR/aG/aB`
+**Two colours** (all except `noise_random` and the grayscale `log_polar_spiral`): the pattern
+blends colour **A** `aR/aG/aB`
 (default black, where the pattern = 0) to colour **B** `bR/bG/bB` (default white, where it
-= 1). Defaults reproduce the original grayscale; set all three of a colour equal for a
-luminance-only result. OutMatte still carries the raw 0..1 pattern mask. (Numeric fields
-step in tenths — use **Space + Drag** for finer colour values.)
+= 1). Most defaults reproduce the original grayscale (set all three of a colour equal for a
+luminance-only result); the exceptions are `wood_grain` (brown/tan) and `marble` (pale-stone/dark-vein),
+which ship with thematic colour defaults. OutMatte still carries the raw 0..1 pattern mask. (Numeric
+fields step in tenths — use **Space + Drag** for finer colour values.)
 
 ### `animated_generators/`
 Keyframed `t` variable drives motion — **scrub frames 1–100** to see it. `t` is animated
@@ -91,6 +104,9 @@ as a 2-key channel (frame 1 → 0, frame 100 → end); edit those keys to change
 | `wave_sawtooth` | scrolling sawtooth ramp | none | `wavelength` 200, `t` 0→2 (anim), + colours |
 | `pulse_rings` | rings expanding from Centre | none (uses Centre) | `wavelength` 100, `t` 0→2 (anim), + colours |
 | `spin_rays` | rays rotating around Centre | none (uses Centre) | `rays` 8, `t` 0→1 = one turn (anim), + colours |
+| `wave_bounce` | rectified-sine bounce wave | none | `wavelength` 200, `t` 0→2 (anim), + colours |
+| `wave_blip` | narrow spike once per period | none | `wavelength` 200, `t` 0→2 (anim), + colours |
+| `wave_parabolic` | eased (squared) sawtooth ramp | none | `wavelength` 200, `t` 0→2 (anim), + colours |
 
 Two colours work exactly as in `pattern_generators/`: `aR/aG/aB` → `bR/bG/bB` (default
 black→white). Defaults reproduce the original grayscale.
@@ -107,6 +123,17 @@ black→white). Defaults reproduce the original grayscale.
 | `white_balance` | per-channel gain (cast removal) | Front 1 | `gainR/G/B` 1.0 |
 | `srgb_to_linear` | sRGB → linear decode (exact) | Front 1 | — |
 | `linear_to_srgb` | linear → sRGB encode (exact) | Front 1 | — |
+| `cosine_palette` | IQ cosine-palette scalar→colour mapper | Front 1 (any scalar) | `tScale` 1.0, `tOffset` 0.0 |
+| `lens_vignette` | physical cos⁴ lens vignette | Front 1 (uses Centre) | `falloff` 800, `amount` 1.0 |
+| `cineon_to_linear` | Kodak Cineon/DPX log → linear | Front 1 (Cineon log) | `blackPt` 95, `whitePt` 685, `gammaC` 0.6 |
+| `linear_to_cineon` | linear → Kodak Cineon/DPX log | Front 1 (scene-linear) | `blackPt` 95, `whitePt` 685, `gammaC` 0.6 |
+| `logc_to_linear` | ARRI LogC3 (EI 800) → linear | Front 1 (LogC) | — |
+| `linear_to_logc` | linear → ARRI LogC3 (EI 800) | Front 1 (scene-linear) | — |
+| `acescct_to_linear` | ACEScct → linear | Front 1 (ACEScct) | — |
+| `linear_to_acescct` | linear → ACEScct | Front 1 (scene-linear) | — |
+| `saturation_by_luma` | saturation varying by luma (shadows vs highlights) | Front 1 | `satLow` 1.0, `satHigh` 1.0, `loThr` 0.2, `hiThr` 0.8 |
+| `highlight_desaturate` | roll over-sat highlights toward white | Front 1 | `thr` 1.0, `soft` 1.0, `amount` 1.0 |
+| `hue_preserving_clip` | clamp to ceiling without hue twist | Front 1 | `ceiling` 1.0 |
 
 ### `3d_position_tools/`
 | File | Nuke origin | Inputs needed | Variables (defaults) |
@@ -117,6 +144,9 @@ black→white). Defaults reproduce the original grayscale.
 | `box_matte` | axis-aligned cube matte | Front 1 = P-world pass | `cenR/cenG/cenB` 0, `boxSize` 1.0, `soft` 0.5 |
 | `normal_relight` | relight from a normal pass | Front 1 = normal pass | `lx` 0, `ly` 0, `lz` 1 |
 | `fresnel_facing` | rim/edge matte from a normal pass | Front 1 = normal pass (camera-space) | `power` 2.0 |
+| `normal_renormalize` | unit-length a normal pass + flip handedness | Front 1 = normal pass (−1..1) | `flipG` 0.0 |
+| `normal_to_facing` | facing/rim ratio from a view-space normal | Front 1 = view-space normal | `rim` 0.0, `falloff` 1.0 |
+| `position_range_remap` | remap a P pass into 0..1 per-axis bbox | Front 1 = P pass | `minX/maxX/minY/maxY/minZ/maxZ` ±1 |
 
 ### `depth_tools/`
 **Convention: depth always arrives on Matte 1 (`m1`).** Defaults assume depth normalised
@@ -153,6 +183,8 @@ math keeps Front 1's alpha (`matte = m1`).
 | `id_isolate` | grade only the region picked by an ID/mask | Front 1 = beauty, Matte 1 = mask | `gain` 1.0, `tintR/G/B` 1.0 |
 | `crypto_pick_2rank` | Cryptomatte ID → matte (2 ranks) | Front 1 + Matte 1 (one crypto layer) | `id` 0.0, `tol` 0.00001 |
 | `crypto_pick_4rank` | Cryptomatte ID → matte (4 ranks, cleaner AA) | Front 1 + Matte 1 + Front 2 + Matte 2 | `id` 0.0, `tol` 0.00001 |
+| `motion_vector_visualize` | MV pass → hue=direction, value=speed | Front 1 = motion-vector pass | `gain` 1.0 |
+| `motion_vector_normalize` | rescale MV pass (px ↔ normalized ↔ packed) | Front 1 = motion-vector pass | `scale` 1.0, `pack` 0.0 |
 
 #### Cryptomatte pickers — setup & caveats
 These are *helpers*, not a full Cryptomatte node. A crypto **layer** is RGBA =
@@ -201,6 +233,9 @@ drift/evolve** the noise over time (they're no longer fixed frames).
 | `noise_value` | smooth value noise | none | `scale` 80, `seed` 0, `gain` 1.0 |
 | `noise_fbm` | 3-octave fractal noise (clouds) | none | `scale` 80, `seed` 0, `lacunarity` 2.0, `persistence` 0.5 |
 | `voronoi` | cellular / nearest-point distance | none | `scale` 80, `seed` 0, `jitter` 1.0 |
+| `voronoi_edges` | cell-wall crack network (F2−F1) | none | `scale` 80, `seed` 0, `jitter` 1.0, `edgeW` 0.08 |
+| `voronoi_manhattan` | diamond/blocky cells (taxicab metric) | none | `scale` 80, `seed` 0, `jitter` 1.0 |
+| `voronoi_chebyshev` | square cells (chessboard metric) | none | `scale` 80, `seed` 0, `jitter` 1.0 |
 
 ### `sdf_shapes/`
 Anti-aliased shape mattes around Centre (size in px, `soft` = edge width). Centre starts
@@ -213,6 +248,8 @@ at 0,0 — use **Show Icon** to position.
 | `sdf_rounded_box` | rounded rectangle | none (uses Centre) | `bx` 200, `by` 120, `corner` 40, `hollow` 0, `soft` 2 |
 | `sdf_ring` | annulus / ring | none (uses Centre) | `radius` 200, `thickness` 20, `soft` 2 |
 | `sdf_polygon` | regular n-gon | none (uses Centre) | `radius` 200, `sides` 6, `rot` 0, `hollow` 0, `soft` 2 |
+| `sdf_lattice` | tiled rounded-square lattice (perforation) | none | `spacing` 80, `boxSize` 22, `corner` 8, `soft` 2 |
+| `smin_metaballs` | 3 blobs welded with smooth-min | none (uses Centre) | `c1x..c3y` offsets, `radius` 120, `k` 90 |
 
 `hollow` (box / rounded box / polygon): 0 = solid, increase toward 1 to cut out the middle
 (outer edge stays fixed). `sdf_circle` → use `sdf_ring` for the hollow version.
@@ -241,15 +278,19 @@ at 0,0 — use **Show Icon** to position.
 | `matte_xor` | non-overlap only | Matte 1 + Matte 2 | — |
 | `matte_invert` | `1 − m1` | Matte 1 | — |
 | `matte_grade` | gamma + gain on matte | Matte 1 | `gamma` 1.0, `gain` 1.0 |
+| `holdout_matte` | A held out by B (`m1 − m1·m2`) | Matte 1 + Matte 2 | `amount` 1.0 |
+| `matte_screen_multiply` | soft screen/multiply combine | Matte 1 + Matte 2 | `mode` 1.0 (1=screen, 0=multiply) |
+| `matte_falloff_ramp` | feather a matte by remapping (no blur) | Matte 1 | `lo` 0.0, `hi` 1.0, `gamma` 1.0 |
 
 ### `utility/`
 | File | Nuke origin | Inputs needed | Variables (defaults) |
 |------|-------------|---------------|----------------------|
 | `stmap` | ST/UV map `(x+0.5)/width` | none (generator) | — |
 | `nan_cleanup` | NaN/Inf pixel fix | Front 1 (opt. Front 2) | — |
+| `uv_test_chart` | UV/lens calibration chart (ramp + grid + crosshair) | none (generator) | `gridN` 10, `lineW` 0.002 |
 
 ## Unconventional / experimental setups
-The six categories below push Pixel Expression past the usual Nuke-derived toolkit: per-pixel **fractals**, **map-generators** that feed a downstream node, painted **control surfaces**, **stylization**, analytic **optics/physics**, and in-comp **diagnostics**. **These 29 setups pass `validate_setups.py` (0 errors) but are not yet compile-checked in Flame** — load-test before trusting (see the Live-Flame note at the top).
+The six categories below push Pixel Expression past the usual Nuke-derived toolkit: per-pixel **fractals**, **map-generators** that feed a downstream node, painted **control surfaces**, **stylization**, analytic **optics/physics**, and in-comp **diagnostics**. **These setups pass `validate_setups.py` (0 errors) and an offline GLSL compile-check, but are not yet load-confirmed in Flame** — load-test before trusting (see the Live-Flame note at the top). The 2026-06-25 expansion (incl. `thin_lens_coc` below and the new `diagnostics/` tools) is in the same compile-checked-pending state.
 
 ### `fractals/`
 Escape-time fractals — **architecture-limited to 8 iterations** (shallow; texture, not deep-zoom).
@@ -267,6 +308,7 @@ Each OUTPUTS a map for a **downstream node** (STMap, or a variable-blur/Defocus 
 |------|--------------|---------------|----------------------|
 | `chromatic_aberration_map` | Radial per-channel ST map (red channel's UV) + blue = offset magnitude | none (generator → STMap) | `amount` (0.02) |
 | `coc_from_depth` | Per-pixel circle-of-confusion radius (0..1) from depth on Matte 1 | Matte 1 (depth) | `focusDepth` (5.0), `focusRange` (5.0), `maxBlur` (1.0) |
+| `thin_lens_coc` | **Physical** thin-lens CoC from depth (asymmetric near/far, far ceiling) → Defocus | Matte 1 (depth) | `focalLen` (0.05), `fStop` (2.8), `focusDist` (5.0), `blurScale` (1000.0), `maxBlur` (1.0) |
 | `glitch_block_map` | Block-shuffle ST map | none (generator → STMap) | `blockSize` (64.0), `corruption` (0.0), `seed` (0.0) |
 | `heat_haze_map` | fbm-driven UV-offset ST map | none (generator → STMap) | `scale` (120.0), `seed` (0.0), `lacunarity` (2.0), `persistence` (0.5), `amp` (0.03) |
 | `kaleidoscope_map` | Mirror-folds angular space into `segments` wedges around Centre | none (generator → STMap) | `segments` (6.0), `rot` (0.0) |
@@ -315,6 +357,12 @@ In-comp inspection tools on Front 1.
 | `color_blindness` | Simulates colour-vision deficiency on Front 1 (Machado 2009 severity-1.0 matrix) | Front 1 (+ Matte 1 to pass alpha) | `type` (0), `amount` (1.0) |
 | `exposure_zebra` | Overlays animated diagonal stripes on clipped pixels | Front 1 (+ Matte 1 to render OutMatte) | `hi` (1.0), `lo` (0.0), `freq` (0.15), `phase` (0.0) |
 | `gamut_clip` | Flags illegal pixels | Front 1 (+ Matte 1 to render OutMatte) | `ceiling` (1.0), `tint` (1.0) |
+| `false_color_exposure` | ARRI/RED-style exposure false-colour (luma → stop bands) | Front 1 | `exposure` (0.0) |
+| `contour_lines` | Topographic iso-lines from Front 1 luminance, over the plate | Front 1 (wire depth/height to band it) | `levels` (10.0), `w` (0.2), `lineVal` (1.0) |
+| `stmap_qc_overlay` | QC overlay for an ST/UV map (checker + out-of-0..1 tint) | Front 1 (an ST/UV map) | `checkN` (20.0) |
+| `negative_pixel_highlighter` | Flags any-channel-negative pixels green (finds, vs `aov_clamp_negative` fixes) | Front 1 | `eps` (0.0), `tint` (1.0) |
+| `clip_highlighter` | Solid over-`ceiling` (red) / under-`floorVal` (blue) clip markers | Front 1 | `ceiling` (1.0), `floorVal` (0.0), `tint` (1.0) |
+| `zone_system_posterize` | Quantise luma into N greyscale exposure zones | Front 1 | `zones` (11.0) |
 
 ## Colour management
 The node does **no colour management** — it runs GLSL math on whatever float values arrive

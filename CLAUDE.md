@@ -9,7 +9,7 @@ The Pixel Expression node (Flame 2027.1+) applies per-pixel GLSL to a clip's cha
 
 ## Commands
 Generator + validator are pure-stdlib Python 3 — no deps, no venv, no install step.
-- `python3 tools/generate_setups.py` — regenerate all 112 `.pixel_expression_node` files +
+- `python3 tools/generate_setups.py` — regenerate all 155 `.pixel_expression_node` files +
   companion `.md` docs from the generator. Run after any edit to `tools/generate_setups.py`.
 - `python3 tools/validate_setups.py` — static-check every generated setup. Must be **0
   errors** (errors on reserved-name collisions; warns on unused/undefined identifiers,
@@ -26,12 +26,12 @@ There is no unit-test suite or build beyond the above — `validate_setups.py` (
 `glsl_compile_check.py` (compile) are the tests.
 
 ## Golden rule: never hand-edit the setup files
-`tools/generate_setups.py` is the **single source of truth**. All 112 `.pixel_expression_node`
+`tools/generate_setups.py` is the **single source of truth**. All 155 `.pixel_expression_node`
 files and their companion `.md` docs are generated from it.
 - Add/change a setup → edit the `SETUPS` list, then add its `CATEGORY`, `DOCS`, and
   `EXPECTS` entries (the script warns if `DOCS`/`EXPECTS` are missing). Optionally add a
   `NOTES` entry — long-form Markdown appended to the setup's `.md` under a `## Notes`
-  heading (workflow, recipes, gotchas); all 112 setups currently have one.
+  heading (workflow, recipes, gotchas); all 155 setups currently have one.
 - Regenerate: `python3 tools/generate_setups.py`
 - Validate: `python3 tools/validate_setups.py` (must be **0 errors**; errors on reserved-name
   collisions — any var/formula shadowing a built-in/input; warns on unused vars / undefined
@@ -49,7 +49,7 @@ files and their companion `.md` docs are generated from it.
 - `.claude/commands/sync-docs.md` — the `/sync-docs` project command (regenerate, validate,
   drift-check, and sync counts + Live-Flame status across the hand-maintained docs).
 - `README.md` — human index (per-folder tables, colour-management, caveats).
-- `setups/` — the 112 generated `.pixel_expression_node` files + companion `.md` docs, in 19
+- `setups/` — the 155 generated `.pixel_expression_node` files + companion `.md` docs, in 19
   category subfolders (the loadable library).
 - `documentation/pixelexpression1.pixel_expression_node` — a real Flame-saved file kept as a
   worked example of the serialization (the one the format doc was reverse-engineered from; do
@@ -128,7 +128,7 @@ seven-segment builders `_seven_seg_expr()`/`_seg_bar()`/`_seg_eq()` + `_SEG_ON`/
 `_LUMA01`; and the `DEPENDS`/`_dep()` machinery that renders each setup's node-dependency
 section. `stylization/` setups are collected in a `_STYLIZATION` list appended to `SETUPS`.
 
-## Folders (112 setups, all under `setups/`)
+## Folders (155 setups, all under `setups/`)
 `alpha_matte_tools` `pattern_generators` `animated_generators` `color_grade`
 `3d_position_tools` `depth_tools` `aov_tools` `uv_distortion` `noise` `sdf_shapes`
 `hsv_color` `matte_combine` `utility`
@@ -158,19 +158,37 @@ the library — so if you edit one, they're the most likely to need a fresh live
   including `utility`, incl. the branchless rgb↔hsv conversions, the full
   `aov_tools/`/`depth_tools/`/`3d_position_tools/`/`uv_distortion/` sets, and `hsl_targeted` —
   the longest single expression in the library).
-- **The 29 setups in the six unconventional categories (`fractals`, `stmap_generators`,
-  `control_surfaces`, `stylization`, `optics_physics`, `diagnostics`) pass an offline GLSL
-  compile-check but are NOT yet confirmed loading in Flame.** All 112 setups compile cleanly
-  under `tools/glsl_compile_check.py` (`glslangValidator`, `#version 410 core`) — and because the
-  83 already-Flame-verified setups all pass that same check, it's a well-calibrated proxy: a
-  clean compile is strong evidence the 29 will load. What it can't confirm: Flame's exact
-  dialect/expression-length acceptance, OutMatte wiring, and visual correctness. So treat them as
-  **compile-checked, in-Flame confirmation pending** — do a real load before fully trusting.
-  Highest-risk to check first:
+- **The remaining 72 setups pass an offline GLSL compile-check but are NOT yet confirmed loading
+  in Flame.** These are the 29 in the six unconventional categories (`fractals`,
+  `stmap_generators`, `control_surfaces`, `stylization`, `optics_physics`, `diagnostics`), **plus
+  the 43 added in the 2026-06-25 expansion (Tiers 1–4)**: Tier-1 (`cosine_palette`,
+  `lens_vignette`, `false_color_exposure`, `contour_lines`, `stmap_qc_overlay`, `uv_test_chart`,
+  `point_grid`, `zone_plate`, `thin_lens_coc`); Tier-2 log curves
+  `cineon_to_linear`/`linear_to_cineon`/`logc_to_linear`/`linear_to_logc`/`acescct_to_linear`/
+  `linear_to_acescct` + `saturation_by_luma`, `highlight_desaturate`, `hue_preserving_clip`,
+  `garbage_gradient_matte`, `holdout_matte`, `matte_screen_multiply`, `matte_falloff_ramp`,
+  `negative_pixel_highlighter`, `clip_highlighter`, `zone_system_posterize`; Tier-3 AOV tools
+  `motion_vector_visualize`, `motion_vector_normalize`, `normal_renormalize`, `normal_to_facing`,
+  `position_range_remap`; Tier-4 patterns `voronoi_edges`, `voronoi_manhattan`,
+  `voronoi_chebyshev`, `hex_grid`, `sdf_lattice`, `smin_metaballs`, `wood_grain`, `marble`,
+  `triangle_tiling`, `log_polar_spiral`, `wave_bounce`, `wave_blip`, `wave_parabolic`. All 155
+  setups compile cleanly under `tools/glsl_compile_check.py` (`glslangValidator`,
+  `#version 410 core`) — and because the 83 already-Flame-verified setups all pass that same check,
+  it's a well-calibrated proxy: a clean compile is strong evidence they will load. What it can't
+  confirm: Flame's exact dialect/expression-length acceptance, OutMatte wiring, and visual
+  correctness. So treat them as **compile-checked, in-Flame confirmation pending** — do a real load
+  before fully trusting. (Some are additionally **math-verified**: the Tier-2 log curves round-trip
+  against published anchors — LogC 0.18→0.391, ACEScct 0.18→0.4136 — and the `voronoi_edges` F1/F2
+  trick and `smin_metaballs` smooth-min were numerically checked.) Highest-risk to check first:
   `seven_segment` (its `seg` formula is the longest single expression in the library now),
   the three `fractals` (deeply-nested vec3 formula chains), `heat_haze_map` (inlines the fbm
-  builder), `thin_film`/`starfield` (swizzled vec formulas), and `color_blindness` (4 matrix
-  formulas). If any fails to load, fix it in `tools/generate_setups.py` and regenerate.
+  builder), `thin_film`/`starfield` (swizzled vec formulas), `color_blindness` (4 matrix
+  formulas), `false_color_exposure` / `stmap_qc_overlay` / `uv_test_chart` (nested vec3 `mix`
+  cascades, and the first setups to read the injected `uv`), and from the Tier-4 wave
+  `voronoi_edges` / `voronoi_manhattan` / `voronoi_chebyshev` (9-term distance chains — the
+  heaviest new GLSL, `voronoi_edges` writes its F1/F2 distance set twice), `hex_grid` (the `gv`
+  nearest-centre ternary), and `smin_metaballs` (nested smooth-min). If any fails to load, fix it
+  in `tools/generate_setups.py` and regenerate.
 - **History/lesson:** `hsl_targeted` first failed to load because it declared a variable
   `width` (collides with the injected built-in `width`); renamed to `bandWidth`. The
   validator now flags ANY var/formula that shadows a built-in/input (not just `uv`), so this

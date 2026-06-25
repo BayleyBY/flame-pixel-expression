@@ -181,6 +181,44 @@ def _voronoi_body():
 
 _VORONOI = _voronoi_body()
 
+
+def _vor_dists(metric="euclid"):
+    """The 9 distances to jittered feature points in the 3x3 neighbourhood (references
+    formulas i, f and var jitter). metric: 'euclid' | 'manhattan' | 'cheby'."""
+    out = []
+    for ox in ("-1.0", "0.0", "1.0"):
+        for oy in ("-1.0", "0.0", "1.0"):
+            off = f"vec2({ox}, {oy})"
+            d = f"({off} + jitter * {_hash2(f'i + {off}')} - f)"
+            if metric == "manhattan":
+                out.append(f"(abs(({d}).x) + abs(({d}).y))")
+            elif metric == "cheby":
+                out.append(f"max(abs(({d}).x), abs(({d}).y))")
+            else:
+                out.append(f"length({d})")
+    return out
+
+
+def _min_chain(terms):
+    e = terms[0]
+    for t in terms[1:]:
+        e = f"min({e}, {t})"
+    return e
+
+
+# voronoi F1/F2: F1 is the plain 9-way min; F2 (second-nearest) is the min after pushing
+# whichever term equals F1 up to +1000 — references F1 BY NAME so there's no expansion.
+_VOR_F1 = _min_chain(_vor_dists("euclid"))
+_VOR_F2 = _min_chain([f"({d} + step({d}, f1) * 1000.0)" for d in _vor_dists("euclid")])
+
+
+def _smin(a, b, k):
+    """Polynomial smooth-min of two SDF distances (IQ). Pass `a`/`b` as short exprs or
+    formula names (they each appear ~3x, so keep them simple to avoid expansion)."""
+    h = f"max({k} - abs(({a}) - ({b})), 0.0) / {k}"
+    return f"(min(({a}), ({b})) - {h} * {h} * {k} * 0.25)"
+
+
 # rgb<->hsv helper formulas (Hocevar, branchless). p=vec4, q=vec4.
 HSV_P = ("p", "mix(vec4(b1, g1, -1.0, 0.6666667), vec4(g1, b1, 0.0, -0.3333333), step(b1, g1))", 3)
 HSV_Q = ("q", "mix(vec4(p.x, p.y, p.w, r1), vec4(r1, p.y, p.z, p.x), step(p.x, r1))", 3)
@@ -1126,6 +1164,22 @@ SETUPS = [
          matte="clamp(abs(m1 - focusDepth) / focusRange, 0.0, 1.0) * maxBlur",
          variables=[("focusDepth", 5.0), ("focusRange", 5.0), ("maxBlur", 1.0)]),
 
+    # Thin-lens circle-of-confusion — PHYSICAL CoC from depth (Matte 1), not a linear ramp.
+    # c ∝ (f²/N) · |S2 − S1| / (S2 · (S1 − f)) — the thin-lens equation, so background and
+    # foreground blur ASYMMETRICALLY and far CoC saturates to a ceiling (true lens DoF). Use
+    # consistent units for focalLen/focusDist/depth; blurScale maps physical CoC → blur px.
+    # Feeds a downstream variable-blur/Defocus (this node can't gather — it sets the amount).
+    dict(name="thin_lens_coc",
+         red="clamp(coc, 0.0, maxBlur)",
+         green="clamp(coc, 0.0, maxBlur)",
+         blue="clamp(coc, 0.0, maxBlur)",
+         matte="clamp(coc, 0.0, maxBlur)",
+         variables=[("focalLen", 0.05), ("fStop", 2.8), ("focusDist", 5.0),
+                    ("blurScale", 1000.0), ("maxBlur", 1.0)],
+         formulas=[("coc",
+                    "abs((focalLen * focalLen / fStop) * (m1 - focusDist) "
+                    "/ (m1 * (focusDist - focalLen) + 0.0001)) * blurScale", 0)]),
+
     # Chromatic-aberration ST map — radial scale that diverges per channel from Centre.
     # Carries the RED channel's distorted source UV (apply per-channel, see Notes); blue
     # holds the radial-offset magnitude for a downstream defringe.
@@ -1304,6 +1358,410 @@ SETUPS = [
              ("neg", "1.0 - step(0.0, min(min(r1, g1), b1))", 0),
              ("over", "step(ceiling, max(max(r1, g1), b1))", 0),
          ]),
+
+    # === Tier 1 expansion (scalar mappers + pure-builtin utilities) =========
+
+    # Cosine palette — map Front 1 luminance through an IQ cosine gradient
+    # (col = a + b*cos(2pi*(c*t + d))). a/b/c/d baked as literals (rainbow); only the
+    # driver shaping (tScale/tOffset) costs variable slots. Heatmap / thermal LUT / false
+    # colour. Drive depth or a pattern by wiring it to Front 1. matte = the 0..1 driver.
+    dict(name="cosine_palette",
+         red="0.5 + 0.5 * cos(6.2831853 * (t + 0.0))",
+         green="0.5 + 0.5 * cos(6.2831853 * (t + 0.3333333))",
+         blue="0.5 + 0.5 * cos(6.2831853 * (t + 0.6666667))",
+         matte="clamp(t, 0.0, 1.0)",
+         variables=[("tScale", 1.0), ("tOffset", 0.0)],
+         formulas=[("t", "dot(vec3(r1, g1, b1), vec3(0.2126, 0.7152, 0.0722)) * tScale + tOffset", 0)]),
+
+    # False-colour exposure — ARRI/RED-style monitoring. Luma -> stops from 18% grey
+    # (s = log2(L/0.18) + exposure), then a step cascade into exposure bands:
+    # purple(clip black) blue teal green(mid) yellow orange red(clip white). col vec3.
+    dict(name="false_color_exposure",
+         red="col.x", green="col.y", blue="col.z",
+         matte="dot(vec3(r1, g1, b1), vec3(0.2126, 0.7152, 0.0722))",
+         variables=[("exposure", 0.0)],
+         formulas=[
+             ("s", "log2(max(dot(vec3(r1, g1, b1), vec3(0.2126, 0.7152, 0.0722)), 0.000001) / 0.18) + exposure", 0),
+             ("col",
+              "mix(mix(mix(mix(mix(mix(vec3(0.5, 0.0, 0.5), "
+              "vec3(0.0, 0.0, 1.0), step(-4.0, s)), "
+              "vec3(0.0, 0.6, 0.6), step(-2.0, s)), "
+              "vec3(0.0, 0.7, 0.0), step(-0.5, s)), "
+              "vec3(0.9, 0.9, 0.0), step(0.5, s)), "
+              "vec3(1.0, 0.5, 0.0), step(2.0, s)), "
+              "vec3(1.0, 0.0, 0.0), step(4.0, s))", 2),
+         ]),
+
+    # Contour / iso-lines — topographic lines from Front 1 luminance, drawn over the
+    # plate. `levels` = bands, `w` = line softness (fixed, no fwidth available), `lineVal`
+    # = line brightness. matte = the line mask. Wire depth/height to Front 1 to band it.
+    dict(name="contour_lines",
+         red="mix(r1, lineVal, edge)",
+         green="mix(g1, lineVal, edge)",
+         blue="mix(b1, lineVal, edge)",
+         matte="edge",
+         variables=[("levels", 10.0), ("w", 0.2), ("lineVal", 1.0)],
+         formulas=[("edge",
+                    "1.0 - smoothstep(0.0, w, fract(dot(vec3(r1, g1, b1), vec3(0.2126, 0.7152, 0.0722)) * levels)) "
+                    "* smoothstep(0.0, w, 1.0 - fract(dot(vec3(r1, g1, b1), vec3(0.2126, 0.7152, 0.0722)) * levels))", 0)]),
+
+    # UV / lens test chart — generator. R=U, G=V ramp + white grid (`gridN` cells) +
+    # red centre crosshair (`lineW` thick). Drop on to eyeball an STMap or a lens warp.
+    dict(name="uv_test_chart",
+         red="col.x", green="col.y", blue="col.z", matte="1.0",
+         variables=[("gridN", 10.0), ("lineW", 0.002)],
+         formulas=[
+             ("grid", "clamp(step(0.97, fract(uv.x * gridN)) + step(0.97, fract(uv.y * gridN)), 0.0, 1.0)", 0),
+             ("col",
+              "mix(mix(vec3(uv, 0.5), vec3(1.0), grid), vec3(1.0, 0.2, 0.2), "
+              "clamp((1.0 - step(lineW, abs(uv.x - 0.5))) + (1.0 - step(lineW, abs(uv.y - 0.5))), 0.0, 1.0))", 2),
+         ]),
+
+    # ST-map QC overlay — Front 1 = an ST/UV map (r1=U, g1=V). Shows the UVs as colour,
+    # a `checkN` checker built from the UV values (spot stretch), and tints out-of-0..1
+    # pixels red. matte = the out-of-bounds mask. Diagnostic for an upstream ST-map.
+    dict(name="stmap_qc_overlay",
+         red="col.x", green="col.y", blue="col.z",
+         matte="clamp(step(1.0, r1) + step(1.0, g1) + (1.0 - step(0.0, r1)) + (1.0 - step(0.0, g1)), 0.0, 1.0)",
+         variables=[("checkN", 20.0)],
+         formulas=[("col",
+                    "mix(mix(vec3(r1, g1, 0.5), vec3(r1, g1, 0.5) * 0.6, mod(floor(r1 * checkN) + floor(g1 * checkN), 2.0)), "
+                    "vec3(1.0, 0.0, 0.0), "
+                    "clamp(step(1.0, r1) + step(1.0, g1) + (1.0 - step(0.0, r1)) + (1.0 - step(0.0, g1)), 0.0, 1.0))", 2)]),
+
+    # Lens vignette — physical cos^4 falloff around Centre. `falloff` = how fast it
+    # darkens (larger = gentler, like a longer focal length in px); `amount` 0..1 mixes
+    # the vignette in. Multiplies Front 1. matte passes Matte 1 through.
+    dict(name="lens_vignette",
+         red="r1 * mix(1.0, pow(clamp(ct, 0.0, 1.0), 4.0), amount)",
+         green="g1 * mix(1.0, pow(clamp(ct, 0.0, 1.0), 4.0), amount)",
+         blue="b1 * mix(1.0, pow(clamp(ct, 0.0, 1.0), 4.0), amount)",
+         matte="m1",
+         variables=[("falloff", 800.0), ("amount", 1.0)],
+         formulas=[("ct", "cos(atan(length(vec2(x - centre.x, y - centre.y)) / falloff))", 0)]),
+
+    # Point grid — dot lattice generator. `spacing` px between dots, `dotR` dot radius.
+    # Two-colour like checkerboard/bricks: colour A background -> colour B dot. AA fixed
+    # at 1px. matte = the raw dot mask.
+    dict(name="point_grid",
+         **_two_color("1.0 - smoothstep(dotR - 1.0, dotR + 1.0, length(mod(vec2(x, y), spacing) - spacing * 0.5))"),
+         variables=[("spacing", 64.0), ("dotR", 6.0)] + _COLVARS),
+
+    # Zone plate — sin(r^2) Fresnel-ring test target (rings get denser outward). `freq`
+    # is tiny because r^2 is large. Two-colour; matte = the raw 0..1 pattern. Moire bait.
+    dict(name="zone_plate",
+         **_two_color("0.5 + 0.5 * sin(freq * dot(vec2(x - centre.x, y - centre.y), vec2(x - centre.x, y - centre.y)))"),
+         variables=[("freq", 0.001)] + _COLVARS),
+
+    # === Tier 2 expansion (colour science, matte math, QC) ==================
+
+    # --- Log <-> linear curves (directional pairs, like srgb_to_linear) ----
+
+    # Cineon/DPX log -> linear (Kodak). `blackPt`/`whitePt` are 10-bit code values
+    # (95/685), `gammaC` the density slope (0.6). fb = the black-point floor so blackPt
+    # maps to 0.0 and whitePt to 1.0. r1 is the 0..1-normalised code value.
+    dict(name="cineon_to_linear",
+         red="(pow(10.0, (r1 * 1023.0 - whitePt) * 0.002 / gammaC) - fb) / (1.0 - fb)",
+         green="(pow(10.0, (g1 * 1023.0 - whitePt) * 0.002 / gammaC) - fb) / (1.0 - fb)",
+         blue="(pow(10.0, (b1 * 1023.0 - whitePt) * 0.002 / gammaC) - fb) / (1.0 - fb)",
+         matte="m1",
+         variables=[("blackPt", 95.0), ("whitePt", 685.0), ("gammaC", 0.6)],
+         formulas=[("fb", "pow(10.0, (blackPt - whitePt) * 0.002 / gammaC)", 0)]),
+
+    # linear -> Cineon/DPX log (inverse of cineon_to_linear). log10 = log()*0.4342944819
+    # (GLSL has no log10). Output is the 0..1-normalised 10-bit code value.
+    dict(name="linear_to_cineon",
+         red="(whitePt + log(max(r1 * (1.0 - fb) + fb, 0.000001)) * 0.4342944819 * gammaC / 0.002) / 1023.0",
+         green="(whitePt + log(max(g1 * (1.0 - fb) + fb, 0.000001)) * 0.4342944819 * gammaC / 0.002) / 1023.0",
+         blue="(whitePt + log(max(b1 * (1.0 - fb) + fb, 0.000001)) * 0.4342944819 * gammaC / 0.002) / 1023.0",
+         matte="m1",
+         variables=[("blackPt", 95.0), ("whitePt", 685.0), ("gammaC", 0.6)],
+         formulas=[("fb", "pow(10.0, (blackPt - whitePt) * 0.002 / gammaC)", 0)]),
+
+    # ARRI LogC3 (EI 800) -> linear. Piecewise: log curve above the encoded breakpoint
+    # (~0.149658 = e*cut+f), linear below. Constants baked (fixed transform like sRGB).
+    dict(name="logc_to_linear",
+         red="r1 > 0.149658 ? (pow(10.0, (r1 - 0.385537) / 0.247190) - 0.052272) / 5.555556 : (r1 - 0.092809) / 5.367655",
+         green="g1 > 0.149658 ? (pow(10.0, (g1 - 0.385537) / 0.247190) - 0.052272) / 5.555556 : (g1 - 0.092809) / 5.367655",
+         blue="b1 > 0.149658 ? (pow(10.0, (b1 - 0.385537) / 0.247190) - 0.052272) / 5.555556 : (b1 - 0.092809) / 5.367655",
+         matte="m1"),
+
+    # linear -> ARRI LogC3 (EI 800). Piecewise: log above the linear breakpoint (cut =
+    # 0.010591), linear below. log10 via log()*0.4342944819, arg guarded against <=0.
+    dict(name="linear_to_logc",
+         red="r1 > 0.010591 ? 0.247190 * log(max(5.555556 * r1 + 0.052272, 0.000001)) * 0.4342944819 + 0.385537 : 5.367655 * r1 + 0.092809",
+         green="g1 > 0.010591 ? 0.247190 * log(max(5.555556 * g1 + 0.052272, 0.000001)) * 0.4342944819 + 0.385537 : 5.367655 * g1 + 0.092809",
+         blue="b1 > 0.010591 ? 0.247190 * log(max(5.555556 * b1 + 0.052272, 0.000001)) * 0.4342944819 + 0.385537 : 5.367655 * b1 + 0.092809",
+         matte="m1"),
+
+    # ACEScct -> linear. Piecewise around the encoded breakpoint Y_BRK = 0.155251...:
+    # exp2 branch above, linear segment below. Constants baked.
+    dict(name="acescct_to_linear",
+         red="r1 > 0.155251141552511 ? exp2(r1 * 17.52 - 9.72) : (r1 - 0.0729055341958355) / 10.5402377416545",
+         green="g1 > 0.155251141552511 ? exp2(g1 * 17.52 - 9.72) : (g1 - 0.0729055341958355) / 10.5402377416545",
+         blue="b1 > 0.155251141552511 ? exp2(b1 * 17.52 - 9.72) : (b1 - 0.0729055341958355) / 10.5402377416545",
+         matte="m1"),
+
+    # linear -> ACEScct. Piecewise around the linear breakpoint X_BRK = 0.0078125: log2
+    # branch above, linear segment below. log2 arg guarded against <=0.
+    dict(name="linear_to_acescct",
+         red="r1 > 0.0078125 ? (log2(max(r1, 0.000001)) + 9.72) / 17.52 : 10.5402377416545 * r1 + 0.0729055341958355",
+         green="g1 > 0.0078125 ? (log2(max(g1, 0.000001)) + 9.72) / 17.52 : 10.5402377416545 * g1 + 0.0729055341958355",
+         blue="b1 > 0.0078125 ? (log2(max(b1, 0.000001)) + 9.72) / 17.52 : 10.5402377416545 * b1 + 0.0729055341958355",
+         matte="m1"),
+
+    # --- Selective saturation / chroma ------------------------------------
+
+    # Saturation by luma — desaturate shadows OR highlights selectively. `satAmt` ramps
+    # from `satLow` (in shadows) to `satHigh` (in highlights) across luma [loThr..hiThr];
+    # each channel mixes toward grey (L) by that amount. Defaults (1,1) = identity.
+    dict(name="saturation_by_luma",
+         red="mix(L, r1, satAmt)", green="mix(L, g1, satAmt)", blue="mix(L, b1, satAmt)",
+         matte="m1",
+         variables=[("satLow", 1.0), ("satHigh", 1.0), ("loThr", 0.2), ("hiThr", 0.8)],
+         formulas=[("L", _LUMA, 0),
+                   ("satAmt", "mix(satLow, satHigh, smoothstep(loThr, hiThr, L))", 0)]),
+
+    # Highlight desaturate — collapse chroma toward white (max channel) above `thr`,
+    # feathered over `soft`, scaled by `amount`. Fixes electric CG speculars / neon skies.
+    dict(name="highlight_desaturate",
+         red="mix(r1, mx, t)", green="mix(g1, mx, t)", blue="mix(b1, mx, t)",
+         matte="m1",
+         variables=[("thr", 1.0), ("soft", 1.0), ("amount", 1.0)],
+         formulas=[("mx", "max(max(r1, g1), b1)", 0),
+                   ("t", "smoothstep(thr, thr + soft, mx) * amount", 0)]),
+
+    # Hue-preserving clip — clamp to `ceiling` by scaling ALL channels by the same factor
+    # (ceiling/max) so hue is preserved (vs per-channel clip, which twists hue). Unlike
+    # gamut_clip (which FLAGS), this rescales the pixel back in range.
+    dict(name="hue_preserving_clip",
+         red="r1 * scale", green="g1 * scale", blue="b1 * scale", matte="m1",
+         variables=[("ceiling", 1.0)],
+         formulas=[("mx", "max(max(r1, g1), b1)", 0),
+                   ("scale", "mx > ceiling ? ceiling / mx : 1.0", 0)]),
+
+    # --- Matte math (no gather) -------------------------------------------
+
+    # Garbage gradient matte — generator. A rotated linear gradient through Centre:
+    # `angle` (radians) sets the direction, `offset` slides the transition along it,
+    # `feather` softens it. Cut a region without a roto. Result on RGB + Matte.
+    dict(name="garbage_gradient_matte",
+         **_solid("smoothstep(-feather, feather, (x - centre.x) * cos(angle) + (y - centre.y) * sin(angle) - offset)"),
+         variables=[("angle", 0.0), ("offset", 0.0), ("feather", 100.0)]),
+
+    # Holdout matte — A held out by B: clamp(m1 - m1*m2*amount, 0, 1). The multiplicative
+    # "subtract the occluder" op (vs matte_subtract's straight m1-m2). Result on RGB + Matte.
+    dict(name="holdout_matte",
+         **_solid("clamp(m1 - m1 * m2 * amount, 0.0, 1.0)"),
+         variables=[("amount", 1.0)]),
+
+    # Matte screen/multiply — soft optical combine of two mattes. `mode` 1 = screen
+    # (a+b-ab, optical union), 0 = multiply (ab, intersection); blends between. Softer
+    # than matte_or/and (max/min). Result on RGB + Matte.
+    dict(name="matte_screen_multiply",
+         **_solid("mix(m1 * m2, m1 + m2 - m1 * m2, mode)"),
+         variables=[("mode", 1.0)]),
+
+    # Matte falloff ramp — feather an already-soft matte by remapping its own values:
+    # smoothstep(lo, hi, m1) shaped by `gamma`. NOT a spatial blur (no gather) — it can
+    # only reshape existing partial coverage. Result on RGB + Matte.
+    dict(name="matte_falloff_ramp",
+         **_solid("pow(smoothstep(lo, hi, m1), gamma)"),
+         variables=[("lo", 0.0), ("hi", 1.0), ("gamma", 1.0)]),
+
+    # --- QC / diagnostics --------------------------------------------------
+
+    # Negative-pixel highlighter — FLAGS pixels with any channel below -eps in green
+    # (vs aov_clamp_negative, which FIXES them). `tint` sets warning opacity. matte = mask.
+    dict(name="negative_pixel_highlighter",
+         red="mix(r1, 0.0, neg * tint)",
+         green="mix(g1, 1.0, neg * tint)",
+         blue="mix(b1, 0.0, neg * tint)",
+         matte="neg",
+         variables=[("eps", 0.0), ("tint", 1.0)],
+         formulas=[("neg", "1.0 - step(-eps, min(min(r1, g1), b1))", 0)]),
+
+    # Clip highlighter — over-`ceiling` pixels marked red, under-`floorVal` marked blue,
+    # in-range passes through. Solid markers (vs exposure_zebra's animated stripes).
+    # matte = union of the two clip masks.
+    dict(name="clip_highlighter",
+         red="over > 0.5 ? mix(r1, 1.0, tint) : (under > 0.5 ? mix(r1, 0.0, tint) : r1)",
+         green="over > 0.5 ? mix(g1, 0.0, tint) : (under > 0.5 ? mix(g1, 0.0, tint) : g1)",
+         blue="over > 0.5 ? mix(b1, 0.0, tint) : (under > 0.5 ? mix(b1, 1.0, tint) : b1)",
+         matte="max(over, under)",
+         variables=[("ceiling", 1.0), ("floorVal", 0.0), ("tint", 1.0)],
+         formulas=[("over", "step(ceiling, max(max(r1, g1), b1))", 0),
+                   ("under", "1.0 - step(floorVal, min(min(r1, g1), b1))", 0)]),
+
+    # Zone-system posterize — quantise luma into `zones` greyscale steps (Ansel Adams
+    # zones) spanning 0..1, for exposure-distribution QC and a banded look. matte = value.
+    dict(name="zone_system_posterize",
+         red="floor(clamp(L, 0.0, 1.0) * zones) / (zones - 1.0)",
+         green="floor(clamp(L, 0.0, 1.0) * zones) / (zones - 1.0)",
+         blue="floor(clamp(L, 0.0, 1.0) * zones) / (zones - 1.0)",
+         matte="floor(clamp(L, 0.0, 1.0) * zones) / (zones - 1.0)",
+         variables=[("zones", 11.0)],
+         formulas=[("L", _LUMA, 0)]),
+
+    # === Tier 3 expansion (technical-pass / AOV tools) ======================
+
+    # Motion-vector visualise — a 2D velocity pass (Front 1: r=u, g=v) shown as
+    # hue=direction, value=magnitude. `gain` scales how bright a given speed reads.
+    # matte = magnitude. Reuses the _hue2rgb tint helper.
+    dict(name="motion_vector_visualize",
+         red="col.x * v", green="col.y * v", blue="col.z * v", matte="v",
+         variables=[("gain", 1.0)],
+         formulas=[("hue", "atan(g1, r1) * 0.1591549 + 0.5", 0),
+                   ("v", "clamp(length(vec2(r1, g1)) * gain, 0.0, 1.0)", 0),
+                   ("col", _hue2rgb("hue"), 2)]),
+
+    # Motion-vector normalize — rescale a pixel-unit MV pass to normalized -1..1
+    # (÷ width/height × `scale`); set `pack`=1 to also encode into 0..1 for storage
+    # (×0.5+0.5). Front 1 = MV pass. Authored at this node's resolution — see Notes.
+    dict(name="motion_vector_normalize",
+         red="(r1 / width * scale) * mix(1.0, 0.5, pack) + mix(0.0, 0.5, pack)",
+         green="(g1 / height * scale) * mix(1.0, 0.5, pack) + mix(0.0, 0.5, pack)",
+         blue="b1", matte="m1",
+         variables=[("scale", 1.0), ("pack", 0.0)]),
+
+    # Normal renormalize — restore a normal pass to unit length after a resize/grade/lerp
+    # denormalized it; `flipG` 0/1 flips green handedness (OpenGL<->DirectX). Expects
+    # normals in -1..1 (remap 0..1 upstream). matte passes through.
+    dict(name="normal_renormalize",
+         red="r1 / nlen",
+         green="g1 * (1.0 - 2.0 * flipG) / nlen",
+         blue="b1 / nlen", matte="m1",
+         variables=[("flipG", 0.0)],
+         formulas=[("nlen", "max(length(vec3(r1, g1, b1)), 0.000001)", 0)]),
+
+    # Normal -> facing — facing/rim ratio from a VIEW-space normal pass (Front 1, -1..1).
+    # `rim` 0=facing (z toward camera), 1=rim (edges); `falloff` shapes the curve.
+    # Result on RGB + Matte (a matte generator).
+    dict(name="normal_to_facing",
+         red="f", green="f", blue="f", matte="f",
+         variables=[("rim", 0.0), ("falloff", 1.0)],
+         formulas=[("f", "pow(clamp(mix(clamp(b1, 0.0, 1.0), 1.0 - clamp(b1, 0.0, 1.0), rim), 0.0, 1.0), falloff)", 0)]),
+
+    # Position range remap — remap a world/object P pass (Front 1) into 0..1 across a
+    # bbox [min..max] per axis, so a position pass can drive a ramp keyed to an object's
+    # extents. Eats 6 vars (the bbox). matte passes Matte 1 through.
+    dict(name="position_range_remap",
+         red="clamp((r1 - minX) / (maxX - minX + 0.0001), 0.0, 1.0)",
+         green="clamp((g1 - minY) / (maxY - minY + 0.0001), 0.0, 1.0)",
+         blue="clamp((b1 - minZ) / (maxZ - minZ + 0.0001), 0.0, 1.0)",
+         matte="m1",
+         variables=[("minX", -1.0), ("maxX", 1.0), ("minY", -1.0), ("maxY", 1.0),
+                    ("minZ", -1.0), ("maxZ", 1.0)]),
+
+    # === Tier 4 expansion (pattern / texture gap-fillers) ===================
+
+    # Voronoi edges — the F2−F1 crack/cell-wall network (cracked mud, shattered glass).
+    # F1 = nearest feature distance, F2 = second-nearest (via the push-to-1000 trick);
+    # cracks sit where they're equal. `edgeW` = crack thickness. Grayscale, like voronoi.
+    dict(name="voronoi_edges",
+         red="1.0 - smoothstep(0.0, edgeW, f2 - f1)",
+         green="1.0 - smoothstep(0.0, edgeW, f2 - f1)",
+         blue="1.0 - smoothstep(0.0, edgeW, f2 - f1)",
+         matte="1.0 - smoothstep(0.0, edgeW, f2 - f1)",
+         variables=[("scale", 80), ("seed", 0.0), ("jitter", 1.0), ("edgeW", 0.08)],
+         formulas=[("i", f"floor(vec2(x, y) / scale + {_SEEDOFF})", 1),
+                   ("f", f"fract(vec2(x, y) / scale + {_SEEDOFF})", 1),
+                   ("f1", _VOR_F1, 0), ("f2", _VOR_F2, 0)]),
+
+    # Voronoi (Manhattan metric) — diamond/blocky cells (circuit-board, pixel-crystal).
+    dict(name="voronoi_manhattan",
+         **_solid(_min_chain(_vor_dists("manhattan"))),
+         variables=[("scale", 80), ("seed", 0.0), ("jitter", 1.0)],
+         formulas=[("p", f"vec2(x, y) / scale + {_SEEDOFF}", 1), ("i", "floor(p)", 1),
+                   ("f", "fract(p)", 1)]),
+
+    # Voronoi (Chebyshev metric) — square cells (faceted / chunky crystal).
+    dict(name="voronoi_chebyshev",
+         **_solid(_min_chain(_vor_dists("cheby"))),
+         variables=[("scale", 80), ("seed", 0.0), ("jitter", 1.0)],
+         formulas=[("p", f"vec2(x, y) / scale + {_SEEDOFF}", 1), ("i", "floor(p)", 1),
+                   ("f", "fract(p)", 1)]),
+
+    # Hex grid — true honeycomb tiling (two offset grids, nearest centre wins). `hexSize`
+    # = cell size, `lineW` = border thickness. Two-colour A (cell) -> B (border).
+    dict(name="hex_grid",
+         **_two_color("smoothstep(0.5 - lineW, 0.5, hd)"),
+         variables=[("hexSize", 60.0), ("lineW", 0.06)] + _COLVARS,
+         formulas=[
+             ("p", "vec2(x, y) / hexSize", 1),
+             ("gv", "dot((mod(p, vec2(1.0, 1.73)) - vec2(0.5, 0.865)), (mod(p, vec2(1.0, 1.73)) - vec2(0.5, 0.865))) "
+                    "< dot((mod(p - vec2(0.5, 0.865), vec2(1.0, 1.73)) - vec2(0.5, 0.865)), (mod(p - vec2(0.5, 0.865), vec2(1.0, 1.73)) - vec2(0.5, 0.865))) "
+                    "? (mod(p, vec2(1.0, 1.73)) - vec2(0.5, 0.865)) : (mod(p - vec2(0.5, 0.865), vec2(1.0, 1.73)) - vec2(0.5, 0.865))", 1),
+             ("hd", "max(abs(gv.x) * 0.5004 + abs(gv.y) * 0.8658, abs(gv.x))", 0),
+         ]),
+
+    # SDF lattice — a tiled rounded-square SDF, anti-aliased (perforation / pegboard
+    # mattes). `spacing` px, `boxSize` half-extent, `corner` round, `soft` edge px.
+    dict(name="sdf_lattice",
+         **_solid("1.0 - smoothstep(-soft, soft, d)"),
+         variables=[("spacing", 80.0), ("boxSize", 22.0), ("corner", 8.0), ("soft", 2.0)],
+         formulas=[("d", "length(max(abs(mod(vec2(x, y), spacing) - spacing * 0.5) - vec2(boxSize), 0.0)) - corner", 0)]),
+
+    # Smooth-min metaballs — 3 fixed point sources merged with a polynomial smin (`k` =
+    # blend radius) into one gooey blob field. Centres are offsets from node Centre;
+    # animate one to make them flow. Grayscale matte generator.
+    dict(name="smin_metaballs",
+         **_solid("1.0 - smoothstep(-3.0, 3.0, " + _smin(_smin("d1", "d2", "k"), "d3", "k") + ")"),
+         variables=[("c1x", -150.0), ("c1y", 0.0), ("c2x", 150.0), ("c2y", 0.0),
+                    ("c3x", 0.0), ("c3y", 150.0), ("radius", 120.0), ("k", 90.0)],
+         formulas=[("d1", "length(vec2(x - centre.x - c1x, y - centre.y - c1y)) - radius", 0),
+                   ("d2", "length(vec2(x - centre.x - c2x, y - centre.y - c2y)) - radius", 0),
+                   ("d3", "length(vec2(x - centre.x - c3x, y - centre.y - c3y)) - radius", 0)]),
+
+    # Wood grain — concentric rings around Centre warped by value-noise turbulence.
+    # `freq` ring spacing, `turb` noise distortion. Default colours = brown/tan.
+    dict(name="wood_grain",
+         **_two_color("0.5 + 0.5 * sin((length(vec2(x - centre.x, y - centre.y)) * freq + "
+                      + _vnoise_at("vec2(x, y) / 60.0") + " * turb) * 6.2831853)"),
+         variables=[("freq", 0.02), ("turb", 4.0),
+                    ("aR", 0.25), ("aG", 0.13), ("aB", 0.05),
+                    ("bR", 0.55), ("bG", 0.35), ("bB", 0.18)]),
+
+    # Marble — turbulence-distorted vein bands (Perlin's classic). `freq` vein spacing,
+    # `turb` distortion. Default colours = pale stone / dark veins.
+    dict(name="marble",
+         **_two_color("0.5 + 0.5 * sin(x * freq + " + _vnoise_at("vec2(x, y) / 40.0") + " * turb)"),
+         variables=[("freq", 0.05), ("turb", 6.0),
+                    ("aR", 0.85), ("aG", 0.85), ("aB", 0.83),
+                    ("bR", 0.15), ("bG", 0.15), ("bB", 0.18)]),
+
+    # Triangle tiling — three fract line families 60° apart make a triangular/rhombille
+    # op-art grid. `triSize` cell size, `lineW` line thickness. Two-colour.
+    dict(name="triangle_tiling",
+         **_two_color("max(smoothstep(0.5 - lineW, 0.5, abs(fract(y / triSize) - 0.5)), "
+                      "max(smoothstep(0.5 - lineW, 0.5, abs(fract((x * 0.8660254 + y * 0.5) / triSize) - 0.5)), "
+                      "smoothstep(0.5 - lineW, 0.5, abs(fract((x * 0.8660254 - y * 0.5) / triSize) - 0.5))))"),
+         variables=[("triSize", 60.0), ("lineW", 0.08)] + _COLVARS),
+
+    # Log-polar spiral — self-similar logarithmic spiral around Centre. `arms` = arm
+    # count, `freq` = radial frequency (zoom self-similarity), `twist` rotates (animate).
+    dict(name="log_polar_spiral",
+         **_solid("0.5 + 0.5 * sin(lr * freq + ang * arms + twist)"),
+         variables=[("freq", 8.0), ("arms", 5.0), ("twist", 0.0)],
+         formulas=[("lr", "log(max(length(vec2(x - centre.x, y - centre.y)), 0.0001))", 0),
+                   ("ang", "atan(y - centre.y, x - centre.x)", 0)]),
+
+    # --- More wave types (Cameron Carson set) — animate `t`, frames 1-100 ---
+
+    # Bounce wave — rectified sine (bouncing-ball motion).
+    dict(name="wave_bounce",
+         **_two_color("abs(sin((x / wavelength + t) * PI))"),
+         variables=[("wavelength", 200), ("t", ANIM_T2)] + _COLVARS),
+
+    # Blip wave — a narrow spike once per period (baked sharpness 8).
+    dict(name="wave_blip",
+         **_two_color("pow(max(sin((x / wavelength + t) * 2.0 * PI), 0.0), 8.0)"),
+         variables=[("wavelength", 200), ("t", ANIM_T2)] + _COLVARS),
+
+    # Parabolic sawtooth — sawtooth ramp shaped by squaring (eased ramp).
+    dict(name="wave_parabolic",
+         **_two_color("pow(fract(x / wavelength + t), 2.0)"),
+         variables=[("wavelength", 200), ("t", ANIM_T2)] + _COLVARS),
 ] + _STYLIZATION
 
 # Organise outputs into subfolders by use.
@@ -1426,6 +1884,53 @@ CATEGORY = {
     "color_blindness": "diagnostics",
     "exposure_zebra": "diagnostics",
     "gamut_clip": "diagnostics",
+    "thin_lens_coc": "stmap_generators",
+    # Tier 1 expansion
+    "cosine_palette": "color_grade",
+    "lens_vignette": "color_grade",
+    "false_color_exposure": "diagnostics",
+    "contour_lines": "diagnostics",
+    "stmap_qc_overlay": "diagnostics",
+    "uv_test_chart": "utility",
+    "point_grid": "pattern_generators",
+    "zone_plate": "pattern_generators",
+    # Tier 2 expansion
+    "cineon_to_linear": "color_grade",
+    "linear_to_cineon": "color_grade",
+    "logc_to_linear": "color_grade",
+    "linear_to_logc": "color_grade",
+    "acescct_to_linear": "color_grade",
+    "linear_to_acescct": "color_grade",
+    "saturation_by_luma": "color_grade",
+    "highlight_desaturate": "color_grade",
+    "hue_preserving_clip": "color_grade",
+    "garbage_gradient_matte": "alpha_matte_tools",
+    "holdout_matte": "matte_combine",
+    "matte_screen_multiply": "matte_combine",
+    "matte_falloff_ramp": "matte_combine",
+    "negative_pixel_highlighter": "diagnostics",
+    "clip_highlighter": "diagnostics",
+    "zone_system_posterize": "diagnostics",
+    # Tier 3 expansion (technical-pass / AOV)
+    "motion_vector_visualize": "aov_tools",
+    "motion_vector_normalize": "aov_tools",
+    "normal_renormalize": "3d_position_tools",
+    "normal_to_facing": "3d_position_tools",
+    "position_range_remap": "3d_position_tools",
+    # Tier 4 expansion (pattern / texture)
+    "voronoi_edges": "noise",
+    "voronoi_manhattan": "noise",
+    "voronoi_chebyshev": "noise",
+    "hex_grid": "pattern_generators",
+    "sdf_lattice": "sdf_shapes",
+    "smin_metaballs": "sdf_shapes",
+    "wood_grain": "pattern_generators",
+    "marble": "pattern_generators",
+    "triangle_tiling": "pattern_generators",
+    "log_polar_spiral": "pattern_generators",
+    "wave_bounce": "animated_generators",
+    "wave_blip": "animated_generators",
+    "wave_parabolic": "animated_generators",
 }
 
 # Per-setup documentation: what it does + when to use it + inputs.
@@ -1778,6 +2283,142 @@ DOCS = {
     "gamut_clip": ("Flags illegal pixels: any channel < 0 tinted magenta, any channel > `ceiling` tinted yellow; in-range passes through. `tint` sets warning opacity.",
                    "Catch negative light and over-range values produced by grades, transforms or matrices.",
                    "Front 1 (+ Matte 1 to render OutMatte)"),
+    "thin_lens_coc": ("Physically-based circle-of-confusion from depth on Matte 1 via the thin-lens equation (`focalLen`, `fStop`, `focusDist`); near/far blur asymmetrically and far CoC saturates. Output feeds a Defocus.",
+                      "Drive a downstream variable-blur/Defocus with real lens DoF — proper foreground/background falloff instead of the symmetric `coc_from_depth` ramp.",
+                      "Matte 1 (depth pass)"),
+    # Tier 1 expansion
+    "cosine_palette": ("Maps Front 1 luminance through an IQ cosine palette (`col = a + b*cos(2π*(c·t+d))`, a/b/c/d baked rainbow). `tScale`/`tOffset` shape the driver.",
+                       "Heatmap/thermal LUT/false-colour a depth, mask or scalar pass; stylised one-knob regrade.",
+                       "Front 1 (any scalar — wire depth/pattern here)"),
+    "false_color_exposure": ("ARRI/RED-style exposure false-colour: luma → stops from 18% grey (`s = log2(L/0.18)+exposure`), banded into purple/blue/teal/green/yellow/orange/red.",
+                             "Judge exposure at a glance — find clipped blacks/whites and the 18% midtone band.",
+                             "Front 1"),
+    "contour_lines": ("Draws topographic iso-lines from Front 1 luminance over the plate: `levels` bands, `w` line softness, `lineVal` brightness. matte = line mask.",
+                      "Inspect a depth/luma/height field as banded contours; stylised map look.",
+                      "Front 1 (wire depth/height here to band it)"),
+    "uv_test_chart": ("Generates a UV/lens calibration chart: R=U,G=V colour ramp + white grid (`gridN` cells) + red centre crosshair (`lineW` thick).",
+                      "Sanity-check an STMap or lens warp — load it, warp it, see how the grid/UVs move.",
+                      "none (generator)"),
+    "stmap_qc_overlay": ("QCs an ST/UV map on Front 1: shows the UVs, a `checkN` checker from the UV values (spot stretch), and tints pixels outside 0..1 red. matte = OOB mask.",
+                         "Validate an ST map before an STMap warp — catch out-of-range UVs and stretching.",
+                         "Front 1 (an ST/UV map)"),
+    "lens_vignette": ("Physical cos⁴ lens vignette around Centre: `falloff` sets how fast it darkens (larger = gentler), `amount` mixes it in. Multiplies Front 1.",
+                      "Natural optical edge darkening; reusable vignette for grades and look-dev.",
+                      "Front 1 (+ Matte 1 to pass alpha)"),
+    "point_grid": ("Dot-lattice generator: `spacing` px between dots, `dotR` radius, two-colour A→B (like checkerboard). matte = dot mask.",
+                   "Alignment/registration grids, perforation/polka mattes, screentone base.",
+                   "none (generator)"),
+    "zone_plate": ("`sin(r²)` Fresnel-ring test target around Centre (rings densen outward); `freq` is tiny because r² is large. Two-colour; matte = pattern.",
+                   "Resolution/aliasing test chart, moiré reference, op-art texture.",
+                   "none (uses Centre)"),
+    # Tier 2 expansion — log curves
+    "cineon_to_linear": ("Kodak Cineon/DPX log → linear. `blackPt`/`whitePt` (10-bit code values 95/685) and `gammaC` (0.6) define the curve; maps blackPt→0, whitePt→1.",
+                         "Linearise scanned-film / DPX log plates before doing light math, then re-encode with `linear_to_cineon`.",
+                         "Front 1 (Cineon-log, normalised 0..1)"),
+    "linear_to_cineon": ("Linear → Kodak Cineon/DPX log (inverse of `cineon_to_linear`). Same `blackPt`/`whitePt`/`gammaC` controls.",
+                         "Re-encode to Cineon log for a film-log delivery or to round-trip a DPX pipeline.",
+                         "Front 1 (scene-linear)"),
+    "logc_to_linear": ("ARRI LogC3 (EI 800) → linear. Piecewise log/linear with the standard constants (breakpoint ≈ 0.149658).",
+                       "Linearise ARRI LogC footage for compositing/light math; re-encode with `linear_to_logc`.",
+                       "Front 1 (ARRI LogC3)"),
+    "linear_to_logc": ("Linear → ARRI LogC3 (EI 800). Inverse of `logc_to_linear` (breakpoint at linear 0.010591).",
+                       "Re-encode to LogC for delivery or to match an ARRI plate's working space.",
+                       "Front 1 (scene-linear)"),
+    "acescct_to_linear": ("ACEScct → linear (ACES2065-style). Piecewise around the encoded breakpoint 0.155251; `exp2` branch above, linear toe below.",
+                          "Linearise an ACEScct grading log for math, then re-encode with `linear_to_acescct`.",
+                          "Front 1 (ACEScct)"),
+    "linear_to_acescct": ("Linear → ACEScct. Inverse of `acescct_to_linear` (linear breakpoint 0.0078125; `log2` branch above).",
+                          "Encode scene-linear to ACEScct for a log grading space.",
+                          "Front 1 (scene-linear)"),
+    # Tier 2 expansion — selective saturation / chroma
+    "saturation_by_luma": ("Saturation that varies with luma: ramps from `satLow` (shadows) to `satHigh` (highlights) across [`loThr`..`hiThr`], mixing each channel toward grey.",
+                           "Desaturate only shadows (or only highlights) — tame noisy blacks or electric speculars without a global pull.",
+                           "Front 1"),
+    "highlight_desaturate": ("Collapses chroma toward the max channel above `thr` (feathered over `soft`, scaled by `amount`) — pulls bright colours toward white.",
+                             "Fix over-saturated CG speculars, neon clipped skies, and electric highlights.",
+                             "Front 1"),
+    "hue_preserving_clip": ("Clamps to `ceiling` by scaling all three channels by the same factor (`ceiling/max`), so hue is preserved — unlike per-channel clip (which twists hue) or `gamut_clip` (which only flags).",
+                            "Bring over-range pixels back in range for a display/delivery clamp without hue shifts.",
+                            "Front 1"),
+    # Tier 2 expansion — matte math
+    "garbage_gradient_matte": ("Generator: a rotated linear gradient through Centre — `angle` (radians) direction, `offset` slides the edge, `feather` softens it. Result on RGB + Matte.",
+                               "Quick garbage matte — cut off a floor/ceiling/region without a roto shape.",
+                               "none (uses Centre)"),
+    "holdout_matte": ("`clamp(m1 - m1·m2·amount, 0, 1)` — matte A (Matte 1) held out by occluder B (Matte 2). Multiplicative, vs `matte_subtract`'s straight m1−m2.",
+                      "Subtract an occluder's coverage from a layer's matte in a layered-render comp.",
+                      "Matte 1 (A) + Matte 2 (B)"),
+    "matte_screen_multiply": ("Soft optical combine of two mattes: `mode` 1 = screen (a+b−ab, union), 0 = multiply (ab, intersection); blends between. Softer than `matte_or`/`matte_and`.",
+                              "Optical-feel union/intersection of two mattes where min/max read too hard.",
+                              "Matte 1 + Matte 2"),
+    "matte_falloff_ramp": ("Feathers a matte by remapping its own values — `smoothstep(lo, hi, m1)` shaped by `gamma`. NOT a blur (no gather): reshapes existing soft coverage only.",
+                           "Tighten/spread an existing soft edge, or gamma a matte's falloff, without a blur node.",
+                           "Matte 1"),
+    # Tier 2 expansion — QC / diagnostics
+    "negative_pixel_highlighter": ("Flags pixels with any channel below −`eps` in green (`tint` = opacity); valid pixels pass through. matte = the negative mask.",
+                                   "Spot negative light (filter ringing, bad comps) before it breaks log/math — `aov_clamp_negative` fixes; this finds.",
+                                   "Front 1"),
+    "clip_highlighter": ("Marks pixels over `ceiling` red and under `floorVal` blue (solid, `tint` opacity); in-range passes through. matte = union of clip masks.",
+                         "At-a-glance over/under-exposure QC with hard thresholds — the solid-marker companion to `exposure_zebra`.",
+                         "Front 1"),
+    "zone_system_posterize": ("Quantises luma into `zones` greyscale steps (Ansel Adams zone system) spanning 0..1. matte = the zone value.",
+                              "Read the exposure distribution as discrete zones; also a clean posterized look.",
+                              "Front 1"),
+    # Tier 3 expansion
+    "motion_vector_visualize": ("Visualises a 2D motion/velocity pass (Front 1: r=u, g=v) as hue=direction, value=magnitude (`gain` scales brightness). matte = magnitude.",
+                                "Eyeball a motion-vector pass — see direction and speed of every pixel at a glance.",
+                                "Front 1 (motion-vector pass)"),
+    "motion_vector_normalize": ("Rescales a pixel-unit motion-vector pass to normalized −1..1 (÷ width/height × `scale`); `pack`=1 also encodes into 0..1 for storage.",
+                                "Convert MV units between pixels / normalized / packed for hand-off to a warp or a different app.",
+                                "Front 1 (motion-vector pass)"),
+    "normal_renormalize": ("Restores a normal pass to unit length (`n/|n|`) after a resize/grade/lerp denormalised it; `flipG` flips green handedness (OpenGL↔DirectX).",
+                           "Clean up a normal AOV before relighting — fix denormalised or wrong-handed normals.",
+                           "Front 1 (normal pass, −1..1)"),
+    "normal_to_facing": ("Facing/rim ratio from a view-space normal pass (Front 1): `rim` 0=facing (toward camera), 1=rim (edges), `falloff` shapes it. Result on RGB + Matte.",
+                         "Rim/edge mattes or a facing key when only a normal AOV (not P) is available.",
+                         "Front 1 (view-space normal)"),
+    "position_range_remap": ("Remaps a world/object P pass (Front 1) into 0..1 across a per-axis bbox `[min..max]`. Eats 6 vars (the bbox).",
+                             "Drive a ramp/grade keyed to an object's extents from a position pass (e.g. gradient along a model's height).",
+                             "Front 1 (position/P pass)"),
+    # Tier 4 expansion
+    "voronoi_edges": ("Cellular crack network — the F2−F1 distance (nearest vs second-nearest feature) drawn as cell-wall lines. `scale`/`jitter`/`seed` as voronoi, `edgeW` crack width.",
+                      "Cracked mud, shattered glass, dried-paint, cell membranes; crack/edge masks.",
+                      "none (generator)"),
+    "voronoi_manhattan": ("Voronoi cells under the Manhattan (taxicab) metric — diamond/blocky cells. `scale`, `seed`, `jitter` as voronoi.",
+                          "Circuit-board / pixel-crystal cellular texture, blocky shatter masks.",
+                          "none (generator)"),
+    "voronoi_chebyshev": ("Voronoi cells under the Chebyshev (chessboard) metric — square cells. `scale`, `seed`, `jitter` as voronoi.",
+                          "Faceted/chunky crystal cells, tiled square-cell texture.",
+                          "none (generator)"),
+    "hex_grid": ("True hexagonal (honeycomb) tiling: `hexSize` cell size, `lineW` border thickness, two-colour cell→border.",
+                 "Honeycomb mattes/overlays, hex-cell bases for randomised fills, sci-fi shields.",
+                 "none (generator)"),
+    "sdf_lattice": ("A tiled, anti-aliased rounded-square SDF: `spacing` px, `boxSize` half-extent, `corner` round, `soft` edge. Sharper/cleaner than a hard checker.",
+                    "Perforation/pegboard/grille mattes, anti-aliased tile patterns.",
+                    "none (generator)"),
+    "smin_metaballs": ("Three point sources merged with a polynomial smooth-min (`k` = blend radius) into one gooey blob field; centres are offsets from Centre. Result on RGB + Matte.",
+                       "Organic blobby alpha mattes, lava-lamp/metaball shapes, soft union bases.",
+                       "none (uses Centre)"),
+    "wood_grain": ("Concentric rings around Centre warped by value-noise turbulence (`freq` spacing, `turb` distortion). Default colours brown/tan; two-colour.",
+                   "Procedural wood texture, tree-ring patterns, organic concentric distortion.",
+                   "none (uses Centre)"),
+    "marble": ("Turbulence-distorted vein bands (`freq` spacing, `turb` distortion) — Perlin's classic marble. Default colours pale-stone/dark-vein; two-colour.",
+               "Marble/stone texture, veined organic looks, paint-swirl bases.",
+               "none"),
+    "triangle_tiling": ("Three `fract` line families 60° apart form a triangular/rhombille op-art grid. `triSize` cell size, `lineW` thickness; two-colour.",
+                        "Isometric/op-art tiling, triangular grid overlays, faux-3D rhombille texture.",
+                        "none"),
+    "log_polar_spiral": ("Self-similar logarithmic spiral around Centre: `arms` arm count, `freq` radial frequency, `twist` rotation (animate it). Grayscale.",
+                         "Hypnotic spiral mattes, droste/zoom backgrounds, vortex transitions.",
+                         "none (uses Centre)"),
+    "wave_bounce": ("Rectified-sine bounce wave (`|sin|`) scrolling with `t`. Two-colour like the other waves.",
+                    "Bouncing-ball motion, pulse trains, rhythmic animated bands.",
+                    "none"),
+    "wave_blip": ("A narrow spike once per period (`pow(max(sin),0)`, baked sharpness) scrolling with `t`. Two-colour.",
+                  "Blip/pulse signals, scanning highlights, sparse rhythmic flashes.",
+                  "none"),
+    "wave_parabolic": ("Sawtooth ramp shaped by squaring (eased parabolic ramp) scrolling with `t`. Two-colour.",
+                       "Eased scrolling ramps, accelerating sweeps, non-linear wipe mattes.",
+                       "none"),
 }
 
 
@@ -1879,12 +2520,613 @@ EXPECTS = {
     "color_blindness": "display-referred sRGB-ish (the Machado 2009 matrices are fit for sRGB display values)",
     "exposure_zebra": "scene-linear / your working space (clip thresholds hi=1.0, lo=0.0 assume normalised values)",
     "gamut_clip": "scene-linear / your working space (negative + over-ceiling detection on raw channel values)",
+    "thin_lens_coc": "depth raw in (Matte 1); outputs a 0..maxBlur circle-of-confusion map (Raw/Data)",
+    # Tier 1 expansion
+    "cosine_palette": "any — the driver is a luma dot-product, so feed it whatever scalar you want mapped (depth, mask, value)",
+    "false_color_exposure": "scene-linear (the 18% grey reference and log2 stop bands assume scene-linear luma)",
+    "contour_lines": _ANY,
+    "uv_test_chart": _GEN,
+    "stmap_qc_overlay": "raw / data (Front 1 is an ST/UV coordinate map, not an image)",
+    "lens_vignette": "scene-linear (multiplicative falloff is correct on linear light)",
+    "point_grid": _GEN,
+    "zone_plate": _GEN,
+    # Tier 2 expansion
+    "cineon_to_linear": "Cineon/DPX log in → scene-linear out (the transform defines the spaces)",
+    "linear_to_cineon": "scene-linear in → Cineon/DPX log out",
+    "logc_to_linear": "ARRI LogC3 (EI 800) in → scene-linear out",
+    "linear_to_logc": "scene-linear in → ARRI LogC3 (EI 800) out",
+    "acescct_to_linear": "ACEScct in → scene-linear (ACES) out",
+    "linear_to_acescct": "scene-linear (ACES) in → ACEScct out",
+    "saturation_by_luma": "scene-linear (Rec.709 luma weights)",
+    "highlight_desaturate": "scene-linear (operates on the max channel / highlights)",
+    "hue_preserving_clip": "any (display- or scene-referred; rescales raw channel values to `ceiling`)",
+    "garbage_gradient_matte": _GEN,
+    "holdout_matte": _ANY,
+    "matte_screen_multiply": _ANY,
+    "matte_falloff_ramp": _ANY,
+    "negative_pixel_highlighter": "scene-linear / your working space (negative-channel detection on raw values)",
+    "clip_highlighter": "any (thresholds are on raw channel values — set `ceiling`/`floorVal` to your range)",
+    "zone_system_posterize": "scene-linear (Rec.709 luma); the zones read as exposure steps",
+    # Tier 3 expansion
+    "motion_vector_visualize": _RAW,
+    "motion_vector_normalize": "raw / data (a velocity pass; the math is res-dependent — see Notes)",
+    "normal_renormalize": "raw / data (normal pass in −1..1)",
+    "normal_to_facing": "raw / data (view-space normal pass in −1..1)",
+    "position_range_remap": "raw / data (world/object position pass)",
+    # Tier 4 expansion
+    "voronoi_edges": _GEN, "voronoi_manhattan": _GEN, "voronoi_chebyshev": _GEN,
+    "hex_grid": _GEN, "sdf_lattice": _GEN, "smin_metaballs": _GEN,
+    "wood_grain": _GEN, "marble": _GEN, "triangle_tiling": _GEN, "log_polar_spiral": _GEN,
+    "wave_bounce": _GEN, "wave_blip": _GEN, "wave_parabolic": _GEN,
 }
 
 
 # Optional long-form notes appended to a setup's .md under a "## Notes" heading. Use for
 # tools whose value isn't obvious from the one-line Use case (workflow, recipes, gotchas).
 NOTES = {
+    "motion_vector_visualize": """
+## Notes
+
+Turns an abstract **2D motion-vector pass** into something you can actually read. Front 1 holds
+velocity as `red`=u, `green`=v (per-pixel screen motion). The node maps **direction → hue** (via
+`atan(v, u)`) and **speed → brightness** (`|velocity|·gain`), so fast-right reads as one colour,
+fast-left its opposite, and still areas go black.
+
+### Use it
+- Drop on the MV pass to QC it before a vector-blur / retime. Spot wrong-signed or zeroed regions.
+- `gain` sets how much motion = full brightness — turn it up for slow shots, down for fast ones.
+- `matte` carries the raw magnitude (a speed mask). **Data pass — tag Raw/Data.**
+""",
+    "motion_vector_normalize": """
+## Notes
+
+Rescales a motion-vector pass between **unit conventions**. Many MV passes are in *pixels*;
+warps/retimes often want *normalized* (−1..1 = fraction of frame), and 8-bit storage wants
+*packed* (0..1).
+
+- Default (`pack`=0): outputs normalized `r/width`, `g/height`, scaled by `scale`.
+- `pack`=1: also encodes into 0..1 (`×0.5+0.5`) for storage; decode later with `×2−1`.
+
+### Resolution caveat (read this)
+The divide uses **this node's** `width`/`height`. If the MV pass was authored at a different
+resolution than the comp it's running in, the normalization is wrong — match resolutions, or bake
+the authoring size into `scale`. **Data pass — tag Raw/Data.**
+""",
+    "normal_renormalize": """
+## Notes
+
+Normal vectors must be **unit length**, but resizing, grading, or lerping a normal AOV leaves them
+denormalized — and relighting then reads wrong intensities. This divides each pixel by its length
+(`n/|n|`, guarded against 0) to restore unit normals.
+
+- `flipG` (0/1) negates green to swap **handedness** — the OpenGL ↔ DirectX green-channel
+  convention that flips bump/normal lighting. Toggle it if your relight looks inverted.
+- **Expects normals in −1..1.** If yours are 0..1-encoded (common in EXRs), remap upstream
+  (`×2−1`) first, per the library normal convention. **Tag Raw/Data.**
+""",
+    "normal_to_facing": """
+## Notes
+
+A **facing ratio** straight from a normal AOV — the dot of the (view-space) normal with the camera
+axis, which here is just the **Z (blue) channel**. `fresnel_facing` does this from a P pass; this
+is for when you only have a normal pass.
+
+- `rim`=0 → facing (surfaces pointing at camera = white); `rim`=1 → rim (edges/grazing = white).
+- `falloff` shapes the curve (a power) — raise it to tighten the rim to a thin edge.
+- Result is written to RGB **and** Matte. **Only valid for view/camera-space normals** — a
+  world-space normal pass won't give a camera-relative facing. **Tag Raw/Data.**
+""",
+    "position_range_remap": """
+## Notes
+
+Remaps a **world/object position (P) pass** into 0..1 across a bounding box, so a position pass can
+drive a ramp keyed to where things are in space — e.g. a gradient up an object's height, or a
+falloff across its depth.
+
+- `minX/maxX`, `minY/maxY`, `minZ/maxZ` are the bbox in the pass's world units; each axis is
+  remapped and clamped to 0..1 independently.
+- This eats **6 of 8** variable slots (the bbox) — like the colour-var pattern, that's expected.
+- Tip: read the P pass's values off a pixel to find the object's extents, then set the bbox.
+  **Tag Raw/Data.**
+""",
+    "voronoi_edges": """
+## Notes
+
+The **cell-wall / crack** complement to `voronoi`: instead of the cells, it draws the **borders**
+between them. At each pixel it finds the nearest feature point (**F1**) and the second-nearest
+(**F2**); the two are equal exactly on a cell boundary, so `F2 − F1` is ~0 there and large in cell
+interiors. The output is `1 − smoothstep(0, edgeW, F2−F1)` — bright cracks on a dark field.
+
+### How F2 is found without state
+The node can't sort, so F2 uses a trick: take the 9-way min for F1, then take the min again over
+the same 9 distances but with whichever one equals F1 **pushed up by 1000** (`d + step(d,f1)·1000`)
+— leaving the second-smallest as the new min. F1 is referenced **by name**, so there's no
+expression blow-up. (Verified correct over 100k random cases.)
+
+### Controls
+`scale` cell size, `seed` pattern (keyframe to drift), `jitter` 0=regular grid…1=random points,
+`edgeW` crack thickness. Grayscale (RGB + Matte), like `voronoi`.
+""",
+    "voronoi_manhattan": """
+## Notes
+
+`voronoi` with the **Manhattan (taxicab) metric** — distance is `|dx|+|dy|` instead of Euclidean
+`length`, which turns the round-ish cells into **diamonds/blocks** with straight 45° walls. Reads
+as circuit-board / pixel-crystal. Same `scale`/`seed`/`jitter` controls as `voronoi`; keyframe
+`seed` to drift. Grayscale generator.
+""",
+    "voronoi_chebyshev": """
+## Notes
+
+`voronoi` with the **Chebyshev (chessboard) metric** — distance is `max(|dx|,|dy|)`, giving
+**axis-aligned square cells**. A faceted, chunky-crystal look distinct from the round Euclidean
+cells and the diamond Manhattan ones. Same controls as `voronoi`. Grayscale generator.
+""",
+    "hex_grid": """
+## Notes
+
+A true **hexagonal (honeycomb) tiling**. It folds the plane onto a hex lattice by testing two
+offset square grids and keeping whichever centre is nearer (the standard "Art of Code" hex trick),
+then draws the cell border from the hex edge-distance.
+
+- `hexSize` — hexagon size in px. `lineW` — border thickness (in hex units, ~0..0.2).
+- Two-colour: A = cell fill, B = border. `matte` = the border mask.
+- The square grids (`pattern_generators/`) had no hex option; this fills that gap. Per-cell IDs for
+  randomised fills would need the cell centre (not exposed here) — this is the tiling/border look.
+""",
+    "sdf_lattice": """
+## Notes
+
+Tiles a single **rounded-square SDF** across the frame with `mod`-space repetition, so every cell
+is an anti-aliased rounded square — a cleaner, softer alternative to the hard-edged `checkerboard`.
+
+- `spacing` cell pitch (px), `boxSize` the square's half-extent, `corner` the rounding radius,
+  `soft` the AA edge width.
+- Grayscale (RGB + Matte). Good for perforation/pegboard/grille mattes and tidy tiled patterns.
+  Set `corner` ≈ `boxSize` for circles, 0 for sharp squares.
+""",
+    "smin_metaballs": """
+## Notes
+
+Three circular point sources blended with a **polynomial smooth-minimum** (`smin`) so they don't
+just overlap — they **weld** into one organic surface with smooth necks between them (the classic
+metaball look). `k` is the blend radius: bigger `k` = longer, gooier necks.
+
+- Centres `c1/c2/c3 (x,y)` are offsets from the node **Centre**; `radius` is the shared blob size.
+- **Animate** one centre (keyframe `c2x`, say) to make the blobs flow and merge — that's where the
+  smooth-min earns its keep.
+- Result on RGB + Matte — an organic alpha matte or a displacement source. `smin` is verified to
+  weld below `min` and never exceed it.
+""",
+    "wood_grain": """
+## Notes
+
+Procedural **wood**: concentric growth rings around the node Centre, warped by value-noise
+**turbulence** so they wander like real grain instead of perfect circles.
+
+- `freq` — ring spacing (higher = tighter rings). `turb` — how much the noise distorts them
+  (0 = clean circles, high = knotty).
+- Default colours are brown→tan; it's a two-colour generator, so set `aR/aG/aB`→`bR/bG/bB` for any
+  wood tone (or match all three for grayscale). Pair with `cosine_palette` for richer grading.
+""",
+    "marble": """
+## Notes
+
+Procedural **marble** (Perlin's classic recipe): straight vein bands along X, displaced by
+value-noise **turbulence** so they swirl and fold like stone.
+
+- `freq` — vein spacing. `turb` — swirl amount (this is what makes it marble rather than stripes).
+- Default colours are pale-stone → dark-vein; two-colour, so dial any stone palette. Rotate the
+  whole look by feeding it through a transform upstream, or pair with `cosine_palette`.
+""",
+    "triangle_tiling": """
+## Notes
+
+Three `fract` line families **60° apart** overlaid to make a **triangular / rhombille** grid — the
+op-art "isometric" tessellation. `triSize` sets the cell size, `lineW` the line thickness;
+two-colour (A = ground, B = lines). Distinct from `checkerboard`/`bricks`/`truchet` (square or
+tile based) — this is the triangular lattice.
+""",
+    "log_polar_spiral": """
+## Notes
+
+A **logarithmic spiral** in log-polar coordinates: it stripes `log(radius)` against angle, so the
+arms are **self-similar** — zooming in looks the same (a droste feel). `arms` = number of spiral
+arms, `freq` = radial frequency (how fast the spiral winds), `twist` rotates the whole thing.
+
+**Keyframe `twist`** for a hypnotic rotating-vortex animation. Grayscale (RGB + Matte). The radius
+is guarded near the Centre so `log` never blows up. Good for transitions and energy-vortex looks.
+""",
+    "wave_bounce": """
+## Notes
+
+A **rectified sine** (`|sin|`) — the wave bounces off zero each period instead of going negative,
+reading like a bouncing ball or a pulse train. Part of the Cameron Carson wave set, alongside the
+existing sine/triangle/square/sawtooth. **Animate `t`** (frames 1–100) to scroll it; two-colour A→B.
+""",
+    "wave_blip": """
+## Notes
+
+A **narrow spike** once per period — `pow(max(sin,0), 8)` keeps only the positive lobe and sharpens
+it to a blip, so most of the cycle is flat with a brief flash. Sharpness is baked at 8 (raising it
+would cost a variable beyond the wave family's fixed 8 slots). **Animate `t`** to send the blip
+travelling; two-colour A→B.
+""",
+    "wave_parabolic": """
+## Notes
+
+A **sawtooth shaped by squaring** (`fract²`) — the ramp eases in slowly then accelerates, a
+parabolic instead of linear sweep. Use it for eased scrolling ramps and non-linear wipes.
+**Animate `t`** (frames 1–100) to scroll; two-colour A→B, like the other `animated_generators/`.
+""",
+    "cineon_to_linear": """
+## Notes
+
+The **Kodak Cineon / DPX log → linear** decode — the classic film-scan linearisation (Nuke's
+`Log2Lin`). Scanned-negative and DPX plates are stored in **printing-density log**; you must
+linearise before any light math (grades, merges, blurs) or the results are wrong.
+
+### Controls
+- `blackPt` / `whitePt` — the 10-bit code values that map to 0.0 and 1.0 (defaults **95 / 685**,
+  the Cineon standard). `r1` is the code value normalised to 0..1.
+- `gammaC` — the density slope (default **0.6**).
+- The `fb` formula is the black-point floor so `blackPt`→0 and `whitePt`→1 exactly.
+
+### Pairing
+Bracket film-log work with `cineon_to_linear` … *(do your linear ops)* … **`linear_to_cineon`**
+to round-trip back to DPX. **Expects** a Cineon-log input; tag the linear output scene-linear.
+""",
+    "linear_to_cineon": """
+## Notes
+
+The inverse of `cineon_to_linear` — **scene-linear → Kodak Cineon/DPX log**. Use the **same**
+`blackPt` / `whitePt` / `gammaC` as the decode so the round-trip is exact. GLSL has no `log10`,
+so it's computed as `log()·0.4342944819`; the argument is `max()`-guarded against ≤0.
+
+Use it to re-encode for a DPX/film-log delivery, or as the closing half of a
+`cineon_to_linear` … `linear_to_cineon` bracket. **Expects** scene-linear in, Cineon-log out.
+""",
+    "logc_to_linear": """
+## Notes
+
+**ARRI LogC3 (EI 800) → linear.** ARRI camera footage is delivered in LogC; linearise it before
+light math. Piecewise: a log curve above the encoded breakpoint (≈ **0.149658**) and a linear
+segment below (the toe). The LogC3 constants are baked (a fixed transform, like `srgb_to_linear`).
+
+Pair with **`linear_to_logc`** to re-encode. **Expects** ARRI LogC3 in → scene-linear out. (LogC3
+is the SUP-3.x / Alexa Classic encoding — match your source; LogC4 / other EIs differ.)
+""",
+    "linear_to_logc": """
+## Notes
+
+Inverse of `logc_to_linear` — **scene-linear → ARRI LogC3 (EI 800)**. Piecewise around the
+**linear** breakpoint 0.010591 (log above, linear toe below). `log10` is `log()·0.4342944819`
+with the argument guarded. Use to re-encode for delivery or to match an ARRI plate's space.
+""",
+    "acescct_to_linear": """
+## Notes
+
+**ACEScct → linear (ACES).** ACEScct is the log *grading* space in an ACES pipeline (ACEScc with
+a Cineon-style toe so lifts behave). Decode to linear for math, grade-bracket, or hand-off.
+Piecewise around the encoded breakpoint **0.155251**: `exp2` above, a linear toe below.
+
+Pair with **`linear_to_acescct`**. **Expects** ACEScct in → scene-linear (ACES) out. (This is the
+transfer curve only — it does **not** do the AP0/AP1 primaries; handle gamut separately.)
+""",
+    "linear_to_acescct": """
+## Notes
+
+Inverse of `acescct_to_linear` — **scene-linear → ACEScct**. Piecewise around the **linear**
+breakpoint 0.0078125 (`log2` branch above, linear toe below); the `log2` argument is guarded.
+Transfer curve only — no primaries conversion. Use to enter an ACEScct grading space.
+""",
+    "saturation_by_luma": """
+## Notes
+
+Saturation that **depends on brightness** — the single most common "advanced" saturation move.
+Instead of one global pull, the amount ramps from `satLow` (in shadows) to `satHigh` (in
+highlights) across luma `loThr`..`hiThr`, then each channel mixes toward grey (`L`) by that amount.
+
+### Recipes
+| Goal | Move |
+|------|------|
+| Kill noisy chroma in the blacks | `satLow` ~0.3, leave `satHigh` 1.0 |
+| Tame electric highlights | `satHigh` ~0.5 (or use `highlight_desaturate`) |
+| Boost only midtones | raise both thresholds inward, `satLow`/`satHigh` 1.0, mid >1 |
+
+Defaults (`satLow`=`satHigh`=1.0) are identity. **Expects scene-linear** (Rec.709 luma weights).
+""",
+    "highlight_desaturate": """
+## Notes
+
+Pulls **bright, over-saturated colour toward white**. Above `thr` (feathered over `soft`) each
+channel is mixed toward the pixel's max channel by `amount` — so a clipped neon-blue sky or an
+electric CG specular rolls off to a believable white-hot instead of a saturated blob.
+
+Distinct from `saturation_by_luma`: that scales chroma by luma generally; this specifically
+collapses chroma toward white in the highlights. **Expects scene-linear.**
+""",
+    "hue_preserving_clip": """
+## Notes
+
+Clamps over-range pixels to `ceiling` by **scaling all three channels by the same factor**
+(`ceiling / max(r,g,b)`), so the **hue and saturation ratio are preserved**. A naïve per-channel
+`min(x, 1)` clips each channel independently and **twists the hue** of bright saturated colours
+(e.g. an orange clips toward yellow). This avoids that.
+
+### vs `gamut_clip`
+`gamut_clip` is a **QC** tool — it *flags* illegal pixels with warning tints and changes nothing
+else. `hue_preserving_clip` is a **fix** — it *rescales* the pixel back into range. Use
+`gamut_clip` to find problems, this to resolve them for a display/delivery clamp.
+""",
+    "garbage_gradient_matte": """
+## Notes
+
+A **procedural garbage matte** — a soft linear gradient you position and rotate, no roto shape
+needed. The transition is a line through the node **Centre**; `angle` (radians) sets its
+direction, `offset` slides it along the normal, `feather` sets the softness. Result is written to
+RGB **and** the Matte.
+
+Great for the fast "cut off everything past this line" jobs — a floor, a ceiling, a wall edge —
+or as a soft side-to-side wipe. Keyframe `offset`/`angle` to animate the cut. Combine with the
+`matte_*` ops to carve more complex garbage regions.
+""",
+    "holdout_matte": """
+## Notes
+
+The **holdout** op for layered renders: matte **A** (Matte 1) minus where occluder **B**
+(Matte 2) covers it — `clamp(A − A·B·amount, 0, 1)`. `amount` scales how strongly B holds A out.
+
+### vs `matte_subtract`
+`matte_subtract` is a straight `A − B`. This is **multiplicative** (`A − A·B`): it only removes A
+where A *itself* has coverage, so A's soft edges survive against B instead of being eaten by a
+flat subtraction. That's the behaviour you want when compositing one render element in front of
+another. Result on RGB + Matte.
+""",
+    "matte_screen_multiply": """
+## Notes
+
+A **soft optical combine** of two mattes. `mode` 1 = **screen** (`A+B−AB`, an optical *union*),
+`mode` 0 = **multiply** (`A·B`, an *intersection*); values between blend the two.
+
+### vs `matte_or` / `matte_and`
+Those use `max` / `min` — geometrically hard unions/intersections with a visible crease where the
+two mattes meet. Screen/multiply roll the overlap together smoothly, which usually reads better
+for soft mattes and density build-up. Pick `matte_or`/`and` for crisp set logic, this for an
+optical feel. Result on RGB + Matte.
+""",
+    "matte_falloff_ramp": """
+## Notes
+
+Feathers a matte by **remapping its own coverage values** — `smoothstep(lo, hi, m1)` shaped by
+`gamma`. Pull `lo`/`hi` together to harden the edge, apart to spread it; `gamma` biases the
+falloff.
+
+### The honest limit
+This is **not a blur** — the node can't gather neighbours, so it cannot create edge width where
+none exists. It can only *reshape* the soft transition a matte already has (an anti-aliased or
+keyed edge). For a true grow/shrink/blur, use a real blur node downstream. Result on RGB + Matte.
+""",
+    "negative_pixel_highlighter": """
+## Notes
+
+**Finds** pixels with any channel below −`eps` and marks them green (`tint` = opacity); everything
+valid passes through, and `matte` carries the negative mask. Negative light comes from filter
+ringing, bad un-premults, or over-shooting grades, and it silently breaks later log/exp math.
+
+### vs `aov_clamp_negative`
+`aov_clamp_negative` **fixes** negatives (clamps them to 0). This one **flags** them so you can see
+*where* they are before deciding how to treat them. Use this to diagnose, that to repair.
+""",
+    "clip_highlighter": """
+## Notes
+
+Solid over/under-exposure markers: any channel ≥ `ceiling` is marked **red**, any channel ≤
+`floorVal` is marked **blue**, in-range passes through; `tint` sets marker opacity and `matte` is
+the union of the two clip masks.
+
+### vs `exposure_zebra`
+`exposure_zebra` draws **animated diagonal stripes** on clipped areas (a moving camera-zebra look).
+This paints **solid** colour with artist-set `ceiling`/`floorVal` thresholds — easier to read as a
+still and to use as an actual clip *mask*. Two takes on the same QC; pick by preference.
+""",
+    "zone_system_posterize": """
+## Notes
+
+Quantises luminance into `zones` discrete greyscale steps spanning 0..1 — Ansel Adams' **zone
+system** as a live readout. Flat bands make the exposure *distribution* obvious (where the image
+sits across the tonal range), and it doubles as a clean posterized look. `matte` carries the zone
+value. Default `zones` = 11 (Zones 0–X). **Expects scene-linear** so the steps read as exposure
+zones; feed display-referred and they're just tonal bands.
+""",
+    "thin_lens_coc": """
+## Notes
+
+**A real lens blur can't happen in this node** — defocus is a *gather* (each output pixel mixes a
+disc of its neighbours, shaped by the aperture), and this node only ever sees the **current
+pixel**. So the honest, useful job here is to compute the **circle-of-confusion (CoC)** — the
+per-pixel blur *radius* — and hand it to a downstream **Defocus / variable-blur** that does the
+actual gather. This is the same split as `coc_from_depth`, but with a **physically correct**
+model instead of a linear ramp.
+
+### The model
+From the thin-lens equation, CoC diameter ∝ `(f²/N) · |S2 − S1| / (S2 · (S1 − f))`, where
+`f` = `focalLen`, `N` = `fStop`, `S1` = `focusDist`, and `S2` = the **depth on Matte 1**. Two
+behaviours fall out of this that a linear ramp (`coc_from_depth`) gets wrong:
+- **Asymmetry** — for the same metric distance from focus, the **background blurs more than the
+  foreground**. The `S2` in the denominator is what does it.
+- **Far-CoC ceiling** — as depth → ∞ the CoC approaches a constant (`f²/(N·(S1−f))`), so distant
+  objects don't blur infinitely. Foreground CoC, by contrast, keeps growing as `S2` → 0.
+
+### Controls & units
+- `focalLen`, `focusDist`, and the **depth pass must share units**. If depth is in metres, use a
+  metre focal length (50 mm → `0.05`). The *relative* DoF look is unit-stable; absolute scale is
+  set by `blurScale`.
+- `fStop` — aperture. Lower = shallower DoF = more blur (CoC ∝ 1/N).
+- `blurScale` — maps the physical CoC onto your Defocus node's pixel-amount range.
+- `maxBlur` — clamps the output (stops a near-camera pixel from asking for an enormous kernel).
+
+### Wiring (required)
+**depth → Matte 1 → this node → Defocus's blur-amount input**, plate on the Defocus front.
+Output is data — **tag it Raw/Data**. Keyframe `focusDist` to rack focus.
+
+### When to use which
+`coc_from_depth` = quick, symmetric, art-directed. **`thin_lens_coc` = physically plausible lens
+DoF** when you want the background/foreground asymmetry and far falloff to read as a real lens.
+""",
+    "cosine_palette": """
+## Notes
+
+A **scalar → colour mapper** built on Inigo Quilez's cosine-palette formula
+`col = a + b·cos(2π·(c·t + d))`. It turns any single value into a smooth, rich gradient —
+the cheapest way to make a depth pass, a mask, or a noise field *readable* as colour.
+
+### How it works
+- The driver `t` = Rec.709 luminance of Front 1, shaped by `tScale` (contrast) and `tOffset`
+  (slide the ramp). So **whatever you wire to Front 1 gets mapped by its brightness** — an
+  image, a depth pass, an SDF, one of the `noise/` generators.
+- `a, b, c, d` are baked as **literals** (the classic rainbow: a=b=0.5, c=1, d=0/⅓/⅔) so they
+  cost zero variable slots. Edit them in the generator if you want a different palette
+  (warm/teal, thermal, two-tone).
+
+### Recipes
+| Want | Move |
+|------|------|
+| Thermal/heatmap of depth | wire depth (on Front 1), raise `tScale` to spread the band |
+| Slow the rainbow | lower `tScale` (e.g. 0.5) |
+| Shift which value is red | `tOffset` |
+
+Pair with `false_color_exposure` (discrete bands) when you need *readable stops* rather than a
+continuous ramp.
+""",
+    "false_color_exposure": """
+## Notes
+
+A **monitoring false-colour**, like the one on an ARRI/RED/Sony viewfinder: it recolours the
+image by exposure so you can *see* where the stops land instead of guessing.
+
+### The bands
+Luminance is converted to **stops from 18% grey** (`s = log2(L/0.18) + exposure`) and quantised:
+
+| Colour | Meaning |
+|--------|---------|
+| Purple | deep shadow / near clip-black (`s < -4`) |
+| Blue → teal | low values (`-4 … -0.5`) |
+| **Green** | the 18% midtone band (`-0.5 … 0.5`) — expose skin/key here |
+| Yellow → orange | highlights (`0.5 … 4`) |
+| Red | near clip-white (`s > 4`) |
+
+### Use it
+- Drop on a monitor branch, judge exposure, then **bypass** it for the real grade.
+- `exposure` slides every band together (preview a stop up/down).
+- **Expects scene-linear** — the 18% reference and the `log2` stops assume linear light. On
+  log/display footage the bands won't line up with real stops.
+""",
+    "contour_lines": """
+## Notes
+
+Draws **topographic iso-lines** through a scalar field — the lines trace constant-value
+contours, like a map. A fast way to *see* the structure of a smooth pass (depth, a height
+field, luma) that's otherwise hard to read.
+
+### Controls
+- `levels` — how many contour bands across 0..1 (more = denser lines).
+- `w` — line softness. There's **no `fwidth`/derivative** here (no neighbour access), so the
+  width is a fixed value in fract-space, not screen-constant — lines look slightly uneven where
+  the field changes fast. That's the honest limit of a per-pixel contour.
+- `lineVal` — line brightness (1 = white over the plate, 0 = black).
+
+### Use it
+Wire a **depth** or **height** pass to Front 1 to band it (drives off luminance). `matte`
+carries just the line mask, so you can comp the contours over something else.
+""",
+    "uv_test_chart": """
+## Notes
+
+A **calibration chart generator** — the thing you run *through* an STMap or lens warp to see
+what it does. The red=U / green=V colour ramp makes direction obvious, the grid shows local
+stretch/squash, and the centre crosshair marks the optical centre.
+
+### Controls
+- `gridN` — grid cells across the frame.
+- `lineW` — crosshair thickness (in normalised units).
+
+### Workflow
+1. Load `uv_test_chart` as a generator.
+2. Send it through the **STMap / lens distort** you're testing.
+3. Read the result: bent grid = distortion, colour shift = where UVs map. Pairs directly with
+   `stmap_qc_overlay` (which inspects the *map itself* rather than the warped chart).
+""",
+    "stmap_qc_overlay": """
+## Notes
+
+An **inspector for ST/UV maps** — it does **not** warp anything. Front 1 must be an ST map
+(`red`=U, `green`=V in 0..1); the node visualises it so you can catch problems *before* an
+STMap re-sample fails silently.
+
+### What it shows
+- The raw UVs as colour (so you see the gradient direction).
+- A `checkN` checker **derived from the UV values** (not from screen position) — bunched/skewed
+  squares reveal stretching the flat colours hide.
+- **Red tint** wherever U or V leaves 0..1, and `matte` = that out-of-bounds mask.
+
+### Use it / limits
+Park it on a monitor, fix the map upstream, then **bypass it** for the real **STMap** warp.
+It can't compute true derivatives (no neighbour access), so the checker is a *hint* at stretch,
+not a Jacobian. **Tag the input Raw/Data** — colour-managing UVs corrupts the read.
+""",
+    "lens_vignette": """
+## Notes
+
+A **physically-motivated vignette** — natural lenses fall off as roughly **cos⁴** of the angle
+from the optical axis, and that's exactly what this applies (`pow(cos(atan(r/falloff)), 4)`),
+multiplied onto Front 1.
+
+### Controls
+- `falloff` — how fast it darkens, in pixels. Think of it like focal length: **larger =
+  gentler** (a long lens vignettes less), smaller = heavier corners. Default 800.
+- `amount` — 0..1 mix of the vignette (0 = off, 1 = full cos⁴).
+- Vignette is centred on the node **Centre**, so you can offset it (decentred lens, off-axis
+  light pool).
+
+### Why cos⁴ over a radial ramp
+`radial_ramp` is an arbitrary art-directable circle; this is the *optical* curve, so stacking it
+on CG matches real-lens darkening and reads less like a drawn mask. **Expects scene-linear** —
+a multiply is only physically right on linear light.
+""",
+    "point_grid": """
+## Notes
+
+A **dot-lattice generator** — regularly spaced dots, the dot complement to `checkerboard` and
+`bricks`. Built on the shared two-colour convention.
+
+### Controls
+- `spacing` — pixels between dot centres.
+- `dotR` — dot radius (px). Anti-aliasing is a fixed 1px `smoothstep`.
+- Colour **A** (`aR/aG/aB`, default black = background) → colour **B** (`bR/bG/bB`, default
+  white = dots). `matte` carries the raw dot mask.
+
+### Uses
+Alignment/registration grids, perforation or polka-dot mattes, a screentone/halftone base, or a
+particle-seed mask. Keyframe `spacing` to pulse the lattice.
+""",
+    "zone_plate": """
+## Notes
+
+A **`sin(r²)` zone plate** (Fresnel/Newton's-rings target): rings that get **denser the further
+out** you go — the classic resolution and aliasing test pattern, and excellent moiré bait.
+
+### Why r² (not r)
+`rings` uses `sin(dist)` — evenly spaced. Here the phase is `r²`, so ring frequency rises with
+radius, sweeping through the whole frequency range in one image. That's what makes it reveal
+sampling/aliasing artefacts (and beat into moiré against other grids or a screen).
+
+### Controls
+- `freq` — ring density. **Tiny** by design (default 0.001) because `r²` is large; nudge with
+  Space+Drag.
+- Centred on the node **Centre**; two-colour A→B like the other pattern generators, `matte` =
+  raw pattern.
+""",
     "hsl_targeted": """
 ## Notes
 
@@ -3972,6 +5214,10 @@ _DEP_AOV = (
     "Consumes specific **render AOVs/passes** delivered by your renderer or extracted from EXR "
     "layers upstream (a Read/MUX/Channel node). The passes are data/light — keep them in the "
     "right space (linear for light math) and wire each to the input named below.")
+_DEP_MV = (
+    "Reads a **2D motion-vector pass on Front 1** (`red`=u, `green`=v screen velocity), from your "
+    "renderer or a vector-generator (e.g. a Motion/Kronos analysis) upstream. It's a data pass — "
+    "keep it Raw/Data; colour-managing velocity corrupts it.")
 
 
 DEPENDS = {
@@ -4026,6 +5272,12 @@ DEPENDS = {
     "depth_dof_mask": _dep("depth pass (Matte 1) → **this node** → variable-blur / Defocus",
                            _DEP_DEFOCUS + " A 0..1 in-focus/out-of-focus **mask** from the depth "
                            "pass on Matte 1 — art-directed falloff rather than a physical CoC."),
+    "thin_lens_coc": _dep("depth pass (Matte 1) → **this node** → variable-blur / Defocus",
+                          _DEP_DEFOCUS + " A **physical** circle-of-confusion from the depth pass "
+                          "on Matte 1 via the thin-lens equation (`focalLen`, `fStop`, `focusDist`) "
+                          "— unlike `coc_from_depth`'s symmetric ramp, foreground and background "
+                          "blur differently and far CoC saturates. Set `blurScale`/`maxBlur` to map "
+                          "the physical CoC onto your Defocus node's amount range."),
 
     # ---- Upstream depth pass (Matte 1) ----
     "depth_normalize": _dep("depth pass (Matte 1) → **this node**", _DEP_DEPTH),
@@ -4112,6 +5364,23 @@ DEPENDS = {
     "hsv_to_rgb": _dep("HSV source (e.g. `rgb_to_hsv`) → **this node**",
                        "Expects an **HSV-encoded** input, which in practice comes from "
                        "`rgb_to_hsv` (or another HSV source) upstream."),
+    "motion_vector_visualize": _dep("motion-vector pass (Front 1) → **this node**",
+                                    _DEP_MV + " Outputs a *view* of the vectors (hue=direction, "
+                                    "value=speed) for QC — not a usable MV pass. Park it on a monitor."),
+    "motion_vector_normalize": _dep("motion-vector pass (Front 1) → **this node** → warp/retime consumer",
+                                    _DEP_MV + " Rescales units (pixels ↔ normalized ↔ packed) for a "
+                                    "downstream consumer; the divide uses **this node's** width/height, so "
+                                    "the MV pass must be at the comp resolution (or bake the size into `scale`)."),
+    "normal_renormalize": _dep("normal pass (Front 1) → **this node** → relight/normal consumer", _DEP_NORMAL),
+    "normal_to_facing": _dep("view-space normal pass (Front 1) → **this node**",
+                             _DEP_NORMAL + " Must be **view/camera-space** normals — a world-space pass "
+                             "won't give a camera-relative facing ratio."),
+    "position_range_remap": _dep("world/object position (P) pass (Front 1) → **this node**", _DEP_P),
+    "stmap_qc_overlay": _dep("ST/UV-map source (e.g. `stmap`, `lens_distort_map`, or an EXR ST layer) → **this node**",
+                             "Front 1 must be an **ST/UV map** (`red`=U, `green`=V in 0..1), not an image — it reads "
+                             "the coordinate values directly to draw the checker and flag out-of-0..1 UVs. It "
+                             "**outputs a view**, not a map: park it on a monitor to inspect the map, then bypass "
+                             "it for the real **STMap** warp. Tag the input Raw/Data; colour-managing UVs corrupts the read."),
 }
 
 
