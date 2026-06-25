@@ -59,6 +59,10 @@ files and their companion `.md` docs are generated from it.
 - `documentation/node_dependencies.md` — every setup that needs an upstream pass or a
   downstream node (ST-map→STMap, CoC→Defocus, depth/P/normal/AOV/crypto consumers, paired
   pack/unpack, colour-management adjacency) with exact Batch wiring. Hand-maintained.
+- `documentation/setup_expansion_backlog.md` — the tiered expansion backlog (idea list with
+  formulas/inputs/gaps, ☐/☑ status). Tiers 1–4 are all built (the 2026-06-25 expansion); the
+  only open items are the **Deferred / flagged** section (Apollonian fractal, single-pass
+  domain-warp, CA-fringe overlay — each constraint-risky or redundant). Add new ideas here.
 - `documentation/nuke_expressions_cheatsheet.md` — source Nuke reference.
 - `documentation/flame_feature_showcase_setup.md` — recipe for a hand-built setup that
   exercises every node feature (front blend, vignette, sat/gamma, ring×ray matte).
@@ -198,3 +202,9 @@ the library — so if you edit one, they're the most likely to need a fresh live
   no-error load failure usually means an unescaped `<`/`>` or a reserved name — a built-in
   (`uv`, `x`, `y`, `width`, `height`, `centre`, `E`, `PI`) or input (`r1`…) used as a
   variable/formula; `tools/validate_setups.py` now catches the reserved-name case.
+- **Outstanding next step (to continue later):** the **72 compile-checked-pending** setups need a
+  real **in-Flame load test**. Work through them (highest-risk list above first); as each batch is
+  confirmed loading, move it into the "verified" count here and in the README (that's exactly what
+  `/sync-docs` reconciles). For *more* setups, pull the next idea from
+  `documentation/setup_expansion_backlog.md` — Tiers 1–4 are done; only the Deferred / flagged
+  items remain (constraint-risky), so net-new ideas should be added there first.
