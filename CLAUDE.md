@@ -25,6 +25,19 @@ Generator + validator are pure-stdlib Python 3 — no deps, no venv, no install 
 There is no unit-test suite or build beyond the above — `validate_setups.py` (static) and
 `glsl_compile_check.py` (compile) are the tests.
 
+## ⚠️ ACTIVE: Live-Flame evaluation in progress — do NOT regenerate
+A setup-by-setup **in-Flame load/visual test** is underway (started 2026-06-25). As each setup
+passes/fails in Flame it is moved (`git mv`) into an **`approved/`** or **`rejected/`** subfolder
+**inside its category folder**. Full tracker + resume point: `documentation/live_flame_eval_progress.md`.
+- **Status:** 16/155 approved, 0 rejected. Phase 1 (the 16 highest-risk setups) is complete; next
+  up is Phase 2, resuming at `stmap_generators/chromatic_aberration_map`.
+- **DO NOT run `tools/generate_setups.py` or `/sync-docs` until the eval is finished.** The
+  generator writes to `setups/<category>/<name>...` and doesn't clean first, so regenerating
+  **resurrects the originals** beside the moved copies → duplicates. The validator and
+  compile-checker use a recursive glob and are still safe to run. The planned final step is to
+  teach the generator to emit into `approved/`/`rejected/` from an approval table, restoring the
+  source-of-truth invariant — only then is regeneration safe again.
+
 ## Golden rule: never hand-edit the setup files
 `tools/generate_setups.py` is the **single source of truth**. All 155 `.pixel_expression_node`
 files and their companion `.md` docs are generated from it.
@@ -202,9 +215,12 @@ the library — so if you edit one, they're the most likely to need a fresh live
   no-error load failure usually means an unescaped `<`/`>` or a reserved name — a built-in
   (`uv`, `x`, `y`, `width`, `height`, `centre`, `E`, `PI`) or input (`r1`…) used as a
   variable/formula; `tools/validate_setups.py` now catches the reserved-name case.
-- **Outstanding next step (to continue later):** the **72 compile-checked-pending** setups need a
-  real **in-Flame load test**. Work through them (highest-risk list above first); as each batch is
-  confirmed loading, move it into the "verified" count here and in the README (that's exactly what
-  `/sync-docs` reconciles). For *more* setups, pull the next idea from
-  `documentation/setup_expansion_backlog.md` — Tiers 1–4 are done; only the Deferred / flagged
-  items remain (constraint-risky), so net-new ideas should be added there first.
+- **Outstanding next step (to continue later):** the **in-Flame load test is actively in progress**
+  (see the "ACTIVE" section at the top + `documentation/live_flame_eval_progress.md`). **16 of the 72
+  compile-checked-pending setups are now Flame-verified** (all of Phase 1, the highest-risk batch) and
+  live in `approved/` subfolders; **56 pending remain**, plus a Phase-4 re-confirm pass over the
+  original 83. **Resume at `stmap_generators/chromatic_aberration_map`** (Phase 2). Counts here/README
+  are NOT yet reconciled via `/sync-docs` — that's deferred until the eval finishes and the generator
+  learns the `approved/`/`rejected/` layout (running `/sync-docs` now would regenerate and duplicate).
+  For *more* setups, pull the next idea from `documentation/setup_expansion_backlog.md` — Tiers 1–4 are
+  done; only the Deferred / flagged items remain (constraint-risky), so net-new ideas go there first.

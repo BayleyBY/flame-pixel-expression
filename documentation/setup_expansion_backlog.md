@@ -128,6 +128,15 @@ _Built 2026-06-25: Tier 3 = 5 AOV/technical-pass tools; Tier 4 = 13 setups (voro
 - **Chromatic-aberration fringe overlay** — real CA needs a gather (already covered by
   `chromatic_aberration_map` STMap). A per-pixel version is only a stylised radial tint. Skippable.
 
+### Captured during Live-Flame eval
+- ☐ **seven_segment alphabet / alphanumeric** — extend the SDF seven-segment approach to letters.
+  Plain 7-seg can fake a crude A–F (hex) + some letters, but full A–Z really wants a **14- or
+  16-segment** ("starburst") layout. Risk: 14/16 bars = a much bigger unrolled truth table than
+  the 7-bar digit, which is *already the longest expression in the library* — likely needs a
+  packed per-character bitmask decoded with arithmetic (no arrays/loops in-node). Compile-check
+  early; may hit the expression-length ceiling. (Requested 2026-06-25 right after seven_segment
+  passed its load test.)
+
 ### Overlap notes (call out in each setup's Notes so they don't read as dupes)
 hue_preserving_clip vs `gamut_clip` · holdout vs `matte_subtract` · matte_screen_multiply vs
 `matte_and/or` · negative_highlighter vs `aov_clamp_negative` · clip_highlighter vs
