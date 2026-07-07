@@ -1100,11 +1100,8 @@ SETUPS = [
     dict(name="matte_invert",
          red="1.0 - m1", green="1.0 - m1", blue="1.0 - m1", matte="1.0 - m1"),
     dict(name="matte_grade",
-         red="clamp(pow(clamp(m1, 0.0, 1.0), gamma) * gain, 0.0, 1.0)",
-         green="clamp(pow(clamp(m1, 0.0, 1.0), gamma) * gain, 0.0, 1.0)",
-         blue="clamp(pow(clamp(m1, 0.0, 1.0), gamma) * gain, 0.0, 1.0)",
-         matte="clamp(pow(clamp(m1, 0.0, 1.0), gamma) * gain, 0.0, 1.0)",
-         variables=[("gamma", 1.0), ("gain", 1.0)]),
+         **_solid("clamp(pow(max(clamp(m1, 0.0, 1.0) * gain + lift, 0.0), 1.0 / gamma), 0.0, 1.0)"),
+         variables=[("lift", 0.0), ("gamma", 1.0), ("gain", 1.0)]),
 
     # --- Escape-time fractals ----------------------------------------------
     # All three share _fractal_chain (4 vec3 formulas z0..z3, 8 total iterations) and read
@@ -2197,7 +2194,7 @@ DOCS = {
                   "Keep only the non-overlapping parts.", "Matte 1 + Matte 2"),
     "matte_invert": ("Inverts the matte (`1 - m1`).",
                      "Flip a matte's inside/outside.", "Matte 1"),
-    "matte_grade": ("Gamma + gain on the matte (clamped).",
+    "matte_grade": ("Lift / gamma / gain on the matte (clamped) — same convention as `lift_gamma_gain`.",
                     "Tighten or spread a matte's edge/density.", "Matte 1"),
     # uv_distortion
     "lens_distort": ("Radial barrel/pincushion ST map (k1, k2), aspect-corrected.",
@@ -4395,8 +4392,13 @@ Inverts the matte (`1 - m1`) — flips inside and outside.
     "matte_grade": """
 ## Notes
 
-Gamma + gain on the matte, clamped. `gamma` shifts the midpoint (choke vs spread the edge),
-`gain` scales density. Tightens or opens a matte's edge.
+**Lift / gamma / gain** on the matte, clamped — the same convention as `lift_gamma_gain`
+(`pow(max(m1 * gain + lift, 0), 1/gamma)`), so it behaves consistently with the RGB grade.
+- `lift` — raises the black floor of the matte (offset; lifts empty areas).
+- `gamma` — shifts the midpoint: `>1` spreads/opens the edge (brighter mids), `<1` chokes it.
+- `gain` — scales density (multiply).
+
+Tightens or opens a matte's edge; defaults (`lift 0 / gamma 1 / gain 1`) are neutral (pass-through).
 """,
     "despill_green": """
 ## Notes

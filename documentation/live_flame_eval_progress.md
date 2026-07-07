@@ -23,9 +23,32 @@ regenerate" freeze). **Now: track status here as a checklist and leave the files
 - **Scope:** all 155 setups (new format — none carry over from the old eval).
 - **Order:** highest-risk first (heaviest GLSL, below), then the rest by category.
 
-## Status: 65 / 156 confirmed (new format)  ·  ✅ PHASE 1 & PHASE 2 COMPLETE · ▶ Phase 3 next
+## Status: 111 / 156 confirmed (new format)  ·  ✅ PHASE 1 & PHASE 2 COMPLETE · ▶ Phase 3/4 (basics) underway
+
+### ▶▶ RESUME HERE (next session) — 45 setups left, all lower-risk basics
+Confirm the remaining folders (whole-folder batches have been passing fast; the file wrapper is the
+only thing that changed, GLSL is unchanged). **Remaining folders:**
+- `aov_tools/` (motion_vector_visualize/normalize + albedo_divide/multiply, ao_multiply, aov_add,
+  aov_clamp_negative, aov_grade_add, crypto_pick_2rank/4rank, id_isolate, screen_merge)
+- `3d_position_tools/` (normal_renormalize, normal_to_facing, position_range_remap + pmatte_sphere/
+  rings/rays, box_matte, normal_relight, fresnel_facing)
+- `depth_tools/` (depth_normalize, depth_matte, depth_dof_mask, depth_contours, depth_posterize,
+  depth_fog, depth_fade)
+- `uv_distortion/` (all)
+- `hsv_color/` (rgb_to_hsv, hsv_to_rgb, hue_rotate, chroma_key, color_replace, vibrance,
+  hsl_targeted, split_tone, sat_matte)
+- `utility/` (stmap, nan_cleanup — uv_test_chart already ✅)
 Phase 2 done: stmap_generators, stylization, optics_physics, control_surfaces, sdf_shapes,
-pattern_generators, diagnostics — all confirmed in the updated node.
+pattern_generators, diagnostics. Phase 3/4 folders confirmed by whole-folder batch:
+- ✅ **`color_grade/` (20)** confirmed 2026-07-07 (log-curve round-trip pairs, grades, cosine_palette,
+  lens_vignette, voxelize).
+- ✅ **`matte_combine/` (11)** confirmed 2026-07-07 (set ops, premult/unpremult, holdout, screen/mult,
+  falloff). **matte_grade: added `lift`** (now lift/gamma/gain matching lift_gamma_gain) — reload to
+  confirm.
+- ✅ **`alpha_matte_tools/` (6)** confirmed 2026-07-07 (alpha_crunch, fill_alpha, alpha_fringe,
+  luma_key, difference_matte, garbage_gradient_matte).
+- ✅ **`animated_generators/` (9)** confirmed 2026-07-07 (wave_sine/triangle/square/sawtooth/bounce/
+  blip/parabolic + pulse_rings, spin_rays — animated `t` motion confirmed).
 - ✅ **entire `sdf_shapes/` folder (8)** confirmed 2026-07-07: sdf_lattice (Phase 2), smin_metaballs
   + metaball_ring (already ✅), + sdf_box/sdf_circle/sdf_polygon/sdf_ring/sdf_rounded_box (Phase 4).
 - ✅ **entire `pattern_generators/` folder (16)** confirmed 2026-07-07: wood_grain, marble,
@@ -72,10 +95,10 @@ Library is now **156** (added `metaball_ring`). Animated channel (thin_film `shi
 - diagnostics: ✅ clip_highlighter · ✅ contour_lines · ✅ exposure_zebra · ✅ gamut_clip · ✅ negative_pixel_highlighter · ✅ zone_system_posterize   ← diagnostics DONE (9/9, incl. the 3 Phase-1 ones)
 
 ### Phase 3 — remaining, lighter per-pixel math
-- color_grade: cosine_palette, lens_vignette, cineon_to_linear, linear_to_cineon, logc_to_linear, linear_to_logc, acescct_to_linear, linear_to_acescct, saturation_by_luma, highlight_desaturate, hue_preserving_clip
-- matte_combine: holdout_matte, matte_screen_multiply, matte_falloff_ramp
-- alpha_matte_tools: garbage_gradient_matte
-- animated_generators: wave_bounce, wave_blip, wave_parabolic
+- color_grade: ✅ ALL 20 confirmed (cosine_palette, lens_vignette, log-curve pairs, saturation_by_luma, highlight_desaturate, hue_preserving_clip + Phase-4 basics)
+- matte_combine: ✅ ALL 11 confirmed (holdout_matte, matte_screen_multiply, matte_falloff_ramp + set-op basics; matte_grade gained a `lift` var)
+- alpha_matte_tools: ✅ ALL 6 confirmed
+- animated_generators: ✅ ALL 9 confirmed (waves + pulse_rings, spin_rays)
 - aov_tools: motion_vector_visualize, motion_vector_normalize
 - 3d_position_tools: normal_renormalize, normal_to_facing, position_range_remap
 

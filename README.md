@@ -277,7 +277,7 @@ at 0,0 — use **Show Icon** to position.
 | `matte_subtract` | `m1 − m2` (clamped) | Matte 1 + Matte 2 | — |
 | `matte_xor` | non-overlap only | Matte 1 + Matte 2 | — |
 | `matte_invert` | `1 − m1` | Matte 1 | — |
-| `matte_grade` | gamma + gain on matte | Matte 1 | `gamma` 1.0, `gain` 1.0 |
+| `matte_grade` | lift / gamma / gain on matte | Matte 1 | `lift` 0.0, `gamma` 1.0, `gain` 1.0 |
 | `holdout_matte` | A held out by B (`m1 − m1·m2`) | Matte 1 + Matte 2 | `amount` 1.0 |
 | `matte_screen_multiply` | soft screen/multiply combine | Matte 1 + Matte 2 | `mode` 1.0 (1=screen, 0=multiply) |
 | `matte_falloff_ramp` | feather a matte by remapping (no blur) | Matte 1 | `lo` 0.0, `hi` 1.0, `gamma` 1.0 |
