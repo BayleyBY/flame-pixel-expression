@@ -23,7 +23,17 @@ regenerate" freeze). **Now: track status here as a checklist and leave the files
 - **Scope:** all 155 setups (new format — none carry over from the old eval).
 - **Order:** highest-risk first (heaviest GLSL, below), then the rest by category.
 
-## Status: 22 / 156 confirmed (new format)  ·  ✅ PHASE 1 COMPLETE (all 16 highest-risk)
+## Status: 35 / 156 confirmed (new format)  ·  ✅ PHASE 1 COMPLETE (all 16 highest-risk) · ▶ Phase 2 (stmap_generators + stylization done)
+
+### ⚠️ Centre-convention fix (2026-07-07) — 4 stmap setups re-opened
+PR245 defaults Centre to the image middle. Four ST-map setups did their OWN `-0.5` centering and
+treated `centre` as an *offset from middle* (`(x+0.5)/width - 0.5 - centre.x/width`), so the new
+middle default double-shifted their pole/optical-centre into the corner. Fixed to use `centre` as
+an **absolute pole** (like `radial_ramp`): `((x + 0.5 - centre.x) / width)`, and dropped the now-
+wrong `0.5 +` origin in the lens/chromatic output. Affected: `polar_to_cartesian`, `kaleidoscope_map`,
+`lens_distort_map`, `chromatic_aberration_map` — the last 3 were "passed" mis-centered (not obvious
+as abstract maps), so their passes are **revoked pending re-check**. Lesson: any setup that
+normalizes coords itself and subtracts a normalized `centre` needs this treatment.
 Library is now **156** (added `metaball_ring`). Animated channel (thin_film `shift`, metaball_ring
 `spin`) confirmed live.
 - ✅ **entire `noise/` folder (7)** confirmed 2026-07-07: voronoi_edges, voronoi_manhattan,
@@ -45,8 +55,8 @@ Library is now **156** (added `metaball_ring`). Animated channel (thin_film `shi
 (these 16 were approved under the OLD format — re-confirm under the new one; expected to pass fast.)
 
 ### Phase 2 — remaining, heavier GLSL / node-deps
-- stmap_generators: chromatic_aberration_map, coc_from_depth, glitch_block_map, kaleidoscope_map, lens_distort_map, polar_to_cartesian, thin_lens_coc
-- stylization: bayer_dither, crosshatch, crt, halftone, palette_quantize, truchet
+- stmap_generators: ✅ chromatic_aberration_map · ✅ coc_from_depth · ✅ glitch_block_map · ✅ kaleidoscope_map · ✅ lens_distort_map · ✅ polar_to_cartesian · ✅ thin_lens_coc   ← stmap_generators DONE (7/7)
+- stylization: ✅ bayer_dither (levels default 2→5) · ✅ crosshatch · ✅ crt (added `scale` var for phosphor size, default 3) · ✅ halftone · ✅ palette_quantize · ✅ truchet (moved → pattern_generators)   ← stylization DONE (6/6)
 - optics_physics: moire, radar_sweep, wave_interference
 - control_surfaces: channel_pack, channel_unpack, dual_output_depth, painted_grade
 - sdf_shapes: sdf_lattice
@@ -72,8 +82,9 @@ tick the checklist above (✅/❌) — do NOT move the file.
 
 ## Recategorization candidates (apply via CATEGORY in generate_setups.py, then regenerate)
 - **starfield**: optics_physics → pattern_generators — ✅ APPLIED 2026-07-07 (hash/noise-driven
-  texture, not analytic physics). README per-folder tables still need the row moved (defer to a
-  sync pass).
+  texture, not analytic physics). README row moved.
+- **truchet**: stylization → pattern_generators — ✅ APPLIED 2026-07-07 (pure procedural tiling
+  generator). README row moved.
 
 ## New backlog idea captured during eval (already in setup_expansion_backlog.md)
 - `digital_counter` (7-seg) **alphabet/alphanumeric** — needs 14/16-segment layout; bigger truth

@@ -80,6 +80,7 @@ documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
 | `marble` | turbulence-veined marble (stone default) | none | `freq` 0.05, `turb` 6.0, + colours |
 | `log_polar_spiral` | self-similar log spiral (grayscale) | none (uses Centre) | `freq` 8.0, `arms` 5.0, `twist` 0.0 (anim) |
 | `starfield` | procedural stars, per-cell hash (twinkles) | none | `cellSize` 40, `twinkle` (anim), `threshold` 0.92, `brightness` 1.0 |
+| `truchet` | Truchet arc-tiles → connected maze/circuit weave | none (procedural) | `tile` 40, `lineW` 4.0, + colours |
 
 **Two colours** (all except `noise_random`, the grayscale `log_polar_spiral`, and `starfield`): the pattern
 blends colour **A** `aR/aG/aB`
@@ -328,13 +329,12 @@ Per-pixel looks on Front 1 (no neighbour gather).
 
 | File | What it does | Inputs needed | Variables (defaults) |
 |------|--------------|---------------|----------------------|
-| `bayer_dither` | Ordered 4x4 Bayer dithering | Front 1 | `levels` (2.0), + colours |
+| `bayer_dither` | Ordered 4x4 Bayer dithering | Front 1 | `levels` (5.0), + colours |
 | `crosshatch` | Pen crosshatch | Front 1 | `spacing` (8), `lineW` (0.5), + colours |
-| `crt` | CRT/VHS look | Front 1 (+ Matte 1 to pass alpha) | `scanDepth` (0.3), `maskDepth` (0.3), `vignette` (0.4), `scanFreq` (1.5), `roll` (animated) |
+| `crt` | CRT/VHS look | Front 1 (+ Matte 1 to pass alpha) | `scanDepth` (0.3), `maskDepth` (0.3), `vignette` (0.4), `scanFreq` (1.5), `scale` (3.0), `roll` (animated) |
 | `halftone` | Newspaper halftone | Front 1 | `cell` (12), `angle` (0.4), + colours |
 | `palette_quantize` | Snaps Front 1 to `levels` tonal steps and tints the result between two palette anchor colours (default 4-tone | Front 1 | `levels` (4.0), + colours |
 | `digital_counter` | Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node | none (generator; composite over your plate) | `digit` (0.0), `digScale` (150), `thick` (0.1), `hw` (0.42), `hh` (0.42), `lit` (1.0) |
-| `truchet` | Truchet tiles | none (procedural; ignores Front) | `tile` (40), `lineW` (4.0), + colours |
 
 ### `optics_physics/`
 Analytic physics/optics generators around Centre; animate the keyframed var noted in each `.md`.

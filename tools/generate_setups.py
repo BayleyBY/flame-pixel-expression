@@ -425,7 +425,7 @@ _STYLIZATION = [
     # `levels` steps with the per-pixel threshold dithered in. Classic 1-bit / GameBoy look.
     dict(name="bayer_dither",
          **_two_color("floor(luma * (levels - 1.0) + bv) / max(levels - 1.0, 1.0)"),
-         variables=[("levels", 2.0)] + _COLVARS,
+         variables=[("levels", 5.0)] + _COLVARS,
          formulas=[("px", "vec2(mod(floor(x), 4.0), mod(floor(y), 4.0))", 1),
                    ("bv", "(mod(px.x, 2.0) * 8.0 + mod(px.y, 2.0) * 4.0 + floor(px.x / 2.0) * 2.0 + floor(px.y / 2.0) + 0.5) / 16.0", 0),
                    ("luma", _LUMA01, 0)]),
@@ -448,12 +448,12 @@ _STYLIZATION = [
     # animated rolling bright bar (KEYFRAME `roll` 0..1 to crawl it up the frame).
     # `scanDepth`/`maskDepth`/`vignette` 0..1 dial each effect; `scanFreq` = scanline pitch.
     dict(name="crt",
-         red="r1 * tone * (1.0 - maskDepth * (1.0 - step(mod(floor(x), 3.0), 0.5)))",
-         green="g1 * tone * (1.0 - maskDepth * (1.0 - step(abs(mod(floor(x), 3.0) - 1.0), 0.5)))",
-         blue="b1 * tone * (1.0 - maskDepth * (1.0 - step(2.5, mod(floor(x), 3.0) + 1.0)))",
+         red="r1 * tone * (1.0 - maskDepth * (1.0 - step(mod(floor(x / scale), 3.0), 0.5)))",
+         green="g1 * tone * (1.0 - maskDepth * (1.0 - step(abs(mod(floor(x / scale), 3.0) - 1.0), 0.5)))",
+         blue="b1 * tone * (1.0 - maskDepth * (1.0 - step(2.5, mod(floor(x / scale), 3.0) + 1.0)))",
          matte="m1",
          variables=[("scanDepth", 0.3), ("maskDepth", 0.3), ("vignette", 0.4),
-                    ("scanFreq", 1.5), ("roll", ANIM_T1)],
+                    ("scanFreq", 1.5), ("scale", 3.0), ("roll", ANIM_T1)],
          formulas=[("vig", "1.0 - vignette * smoothstep(0.4 * height, 0.75 * height, length(vec2(x - width * 0.5, y - height * 0.5)))", 0),
                    ("bar", "1.0 + 0.4 * smoothstep(0.85, 1.0, cos((y / height - roll) * 2.0 * PI))", 0),
                    ("tone", "vig * bar * (1.0 - scanDepth * (0.5 + 0.5 * sin(y * scanFreq)))", 0)]),
@@ -1143,8 +1143,8 @@ SETUPS = [
          green="clamp(length(vec2(nx, ny)) / zoom, 0.0, 1.0)",
          blue="0.0", matte="1.0",
          variables=[("twist", 0.0), ("zoom", 1.0)],
-         formulas=[("nx", "((x + 0.5) / width - 0.5 - centre.x / width) * 2.0", 0),
-                   ("ny", "((y + 0.5) / height - 0.5 - centre.y / height) * 2.0 * (height / width)", 0)]),
+         formulas=[("nx", "((x + 0.5 - centre.x) / width) * 2.0", 0),
+                   ("ny", "((y + 0.5 - centre.y) / height) * 2.0 * (height / width)", 0)]),
 
     # Kaleidoscope fold — mirror-fold angular space into 'segments' wedges around Centre.
     # Source UV is reconstructed from the folded angle + original radius, back to 0..1.
@@ -1153,20 +1153,20 @@ SETUPS = [
          green="0.5 + sin(fa) * rad * (width / height)",
          blue="0.0", matte="1.0",
          variables=[("segments", 6.0), ("rot", 0.0)],
-         formulas=[("nx", "((x + 0.5) / width - 0.5 - centre.x / width)", 0),
-                   ("ny", "((y + 0.5) / height - 0.5 - centre.y / height) * (height / width)", 0),
+         formulas=[("nx", "((x + 0.5 - centre.x) / width)", 0),
+                   ("ny", "((y + 0.5 - centre.y) / height) * (height / width)", 0),
                    ("rad", "length(vec2(nx, ny))", 0),
                    ("fa", "abs(mod(atan(ny, nx) + rot, 2.0 * PI / segments) - PI / segments)", 0)]),
 
     # Lens distort/undistort ST map with anamorphic squeeze. Radial polynomial (k1, k2)
     # around Centre; 'squeeze' scales X for anamorphic. Negate k1/k2 to invert (undistort).
     dict(name="lens_distort_map",
-         red="0.5 + centre.x / width + nx * f / squeeze * 0.5",
-         green="0.5 + centre.y / height + ny * f * 0.5 * (width / height)",
+         red="centre.x / width + nx * f / squeeze * 0.5",
+         green="centre.y / height + ny * f * 0.5 * (width / height)",
          blue="0.0", matte="1.0",
          variables=[("k1", 0.1), ("k2", 0.0), ("squeeze", 1.0)],
-         formulas=[("nx", "((x + 0.5) / width - 0.5 - centre.x / width) * 2.0", 0),
-                   ("ny", "((y + 0.5) / height - 0.5 - centre.y / height) * 2.0 * (height / width)", 0),
+         formulas=[("nx", "((x + 0.5 - centre.x) / width) * 2.0", 0),
+                   ("ny", "((y + 0.5 - centre.y) / height) * 2.0 * (height / width)", 0),
                    ("r2v", "nx * nx + ny * ny", 0),
                    ("f", "1.0 + k1 * r2v + k2 * r2v * r2v", 0)]),
 
@@ -1220,13 +1220,13 @@ SETUPS = [
     # Carries the RED channel's distorted source UV (apply per-channel, see Notes); blue
     # holds the radial-offset magnitude for a downstream defringe.
     dict(name="chromatic_aberration_map",
-         red="0.5 + centre.x / width + nx * (1.0 + amount) * 0.5",
-         green="0.5 + centre.y / height + ny * (1.0 + amount) * 0.5 * (width / height)",
+         red="centre.x / width + nx * (1.0 + amount) * 0.5",
+         green="centre.y / height + ny * (1.0 + amount) * 0.5 * (width / height)",
          blue="length(vec2(nx, ny)) * amount",
          matte="1.0",
          variables=[("amount", 0.02)],
-         formulas=[("nx", "((x + 0.5) / width - 0.5 - centre.x / width) * 2.0", 0),
-                   ("ny", "((y + 0.5) / height - 0.5 - centre.y / height) * 2.0 * (height / width)", 0)]),
+         formulas=[("nx", "((x + 0.5 - centre.x) / width) * 2.0", 0),
+                   ("ny", "((y + 0.5 - centre.y) / height) * 2.0 * (height / width)", 0)]),
 
     # === control_surfaces — Front 2 / Matte 2 as a painted control map ===
 
@@ -1917,7 +1917,7 @@ CATEGORY = {
     "bayer_dither": "stylization",
     "crosshatch": "stylization",
     "crt": "stylization",
-    "truchet": "stylization",
+    "truchet": "pattern_generators",  # recat from stylization (pure procedural tiling generator)
     "palette_quantize": "stylization",
     "digital_counter": "stylization",
     # Optics / physics generators
@@ -4945,9 +4945,11 @@ subtle "this is on a monitor" cue to full retro grunge.
 ### How it works
 - **Scanlines** — `tone` darkens every other line via `sin(y * scanFreq)`, depth set by
   `scanDepth`.
-- **Phosphor mask** — `x mod 3` selects which of R/G/B stays bright in each column; the
-  other two are knocked back by `maskDepth`, giving the characteristic colour-fringed
-  vertical stripes.
+- **Phosphor mask** — `floor(x / scale) mod 3` selects which of R/G/B stays bright in each
+  column; the other two are knocked back by `maskDepth`, giving the characteristic
+  colour-fringed vertical stripes. **`scale`** sets the stripe width in pixels (triad =
+  `3 * scale` px) — raise it for a coarse, clearly-visible phosphor grid; `scale = 1` is the
+  native 1-pixel-per-stripe look.
 - **Vignette** — radial darkening from frame centre, strength `vignette`.
 - **Rolling bar** — a soft bright band whose vertical position is the **keyframed** `roll`
   variable (0..1 = one full pass up the frame). Animate it for the drifting-hold-bar look.
@@ -4956,6 +4958,8 @@ subtle "this is on a monitor" cue to full retro grunge.
 - `scanDepth` / `maskDepth` / `vignette` — 0..1 strength of each effect (set any to 0 to
   disable it).
 - `scanFreq` — scanline pitch (higher = finer lines).
+- `scale` — phosphor-stripe width in px (default 3). `1` = the original hairline mask; larger =
+  chunkier, more obvious RGB stripes.
 - `roll` — **keyframe this** 0->1 over your shot to make the bright bar crawl. Default is
   one pass over frames 1-100; rescale to taste.
 

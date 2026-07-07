@@ -8,7 +8,7 @@
 
 **Expects:** display-referred / working image (look applied multiplicatively)
 
-**Variables:** `scanDepth` (0.3), `maskDepth` (0.3), `vignette` (0.4), `scanFreq` (1.5), `roll` (animated)
+**Variables:** `scanDepth` (0.3), `maskDepth` (0.3), `vignette` (0.4), `scanFreq` (1.5), `scale` (3.0), `roll` (animated)
 
 ## Notes
 
@@ -20,9 +20,11 @@ subtle "this is on a monitor" cue to full retro grunge.
 ### How it works
 - **Scanlines** — `tone` darkens every other line via `sin(y * scanFreq)`, depth set by
   `scanDepth`.
-- **Phosphor mask** — `x mod 3` selects which of R/G/B stays bright in each column; the
-  other two are knocked back by `maskDepth`, giving the characteristic colour-fringed
-  vertical stripes.
+- **Phosphor mask** — `floor(x / scale) mod 3` selects which of R/G/B stays bright in each
+  column; the other two are knocked back by `maskDepth`, giving the characteristic
+  colour-fringed vertical stripes. **`scale`** sets the stripe width in pixels (triad =
+  `3 * scale` px) — raise it for a coarse, clearly-visible phosphor grid; `scale = 1` is the
+  native 1-pixel-per-stripe look.
 - **Vignette** — radial darkening from frame centre, strength `vignette`.
 - **Rolling bar** — a soft bright band whose vertical position is the **keyframed** `roll`
   variable (0..1 = one full pass up the frame). Animate it for the drifting-hold-bar look.
@@ -31,6 +33,8 @@ subtle "this is on a monitor" cue to full retro grunge.
 - `scanDepth` / `maskDepth` / `vignette` — 0..1 strength of each effect (set any to 0 to
   disable it).
 - `scanFreq` — scanline pitch (higher = finer lines).
+- `scale` — phosphor-stripe width in px (default 3). `1` = the original hairline mask; larger =
+  chunkier, more obvious RGB stripes.
 - `roll` — **keyframe this** 0->1 over your shot to make the bright bar crawl. Default is
   one pass over frames 1-100; rescale to taste.
 

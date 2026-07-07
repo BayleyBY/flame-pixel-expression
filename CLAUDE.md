@@ -99,11 +99,15 @@ files and their companion `.md` docs are generated from it.
   `<Channel Name><Extrap>constant</Extrap><Value>V</Value><Uncollapsed/></Channel>` (no
   `<Size>`/`<KeyVersion>`/`<KFrames>`). An *animated* channel keeps the old
   `Size`/`KeyVersion`/`KFrames`/`Key` block (a list of `(frame, value)` pairs).
-- **Centre now defaults to the image middle:** stored `centre=(0,0)` renders at the middle
-  (not the top-left corner as before), while `x`/`y` and pixel distances are unchanged — so
-  `x - centre.x` math and pixel-scale radii still work, and centre-based shapes auto-centre.
-  No setup sets a custom centre, so no expression edits were needed. Both `centre` and `center`
-  spellings are now recognised in expressions.
+- **Centre now defaults to the image middle (PR245).** At runtime `centre.x`/`centre.y` inject as
+  the **middle pixel coords** (≈`width/2`, `height/2`) by default — NOT `0`. `x`/`y` and pixel
+  distances are unchanged. **Convention: use `centre` as an ABSOLUTE focal point** (`x - centre.x`,
+  like `radial_ramp` and the SDF shapes) — those auto-centre and follow the Centre manipulator
+  correctly. **Do NOT do your own `-0.5` centering and then subtract a normalized `centre`**
+  (`(x+0.5)/width - 0.5 - centre.x/width`): that treats `centre` as an offset-from-middle and now
+  double-shifts by the new default, pushing the pole to a corner. This bit the four ST-map
+  generators (`polar_to_cartesian`/`kaleidoscope_map`/`lens_distort_map`/`chromatic_aberration_map`)
+  — fixed to `((x + 0.5 - centre.x)/width)`. Both `centre` and `center` spellings are recognised.
 - Input wiring is NOT stored — connect Front/Matte in Batch. OutMatte output is tagged as Matte.
 
 ## GLSL / node gotchas

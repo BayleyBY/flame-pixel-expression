@@ -8,7 +8,7 @@
 
 **Expects:** display-referred / working image (luma-driven look)
 
-**Variables:** `levels` (2.0), `aR` (0.0), `aG` (0.0), `aB` (0.0), `bR` (1.0), `bG` (1.0), `bB` (1.0)
+**Variables:** `levels` (5.0), `aR` (0.0), `aG` (0.0), `aB` (0.0), `bR` (1.0), `bG` (1.0), `bB` (1.0)
 
 ## Notes
 
