@@ -81,6 +81,7 @@ documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
 | `log_polar_spiral` | self-similar log spiral (grayscale) | none (uses Centre) | `freq` 8.0, `arms` 5.0, `twist` 0.0 (anim) |
 | `starfield` | procedural stars, per-cell hash (twinkles) | none | `cellSize` 40, `twinkle` (anim), `threshold` 0.92, `brightness` 1.0 |
 | `truchet` | Truchet arc-tiles → connected maze/circuit weave | none (procedural) | `tile` 40, `lineW` 4.0, + colours |
+| `wave_interference` | Ripple-tank interference of two point sources (Centre + `srcX`) | none (uses Centre) | `srcX` 300, `phase` (anim), + colours |
 
 **Two colours** (all except `noise_random`, the grayscale `log_polar_spiral`, and `starfield`): the pattern
 blends colour **A** `aR/aG/aB`
@@ -344,7 +345,6 @@ Analytic physics/optics generators around Centre; animate the keyframed var note
 | `moire` | Beat pattern of two near-identical line gratings (`freqA` vs `freqB`) — an intentional moiré. | none | `freqA` (0.08), `freqB` (0.085), + colours |
 | `radar_sweep` | Rotating radar/oscilloscope sweep around Centre with an exponential afterglow trailing behind the line, plus faint range rings | none (uses Centre) | `sweep` (animated), `decay` (3.0), `ringFreq` (0.02), `glowR` (0.1), `glowG` (1.0), `glowB` (0.3) |
 | `thin_film` | Thin-film interference iridescence | none (uses Centre) | `thickness` (1.0), `scale` (0.004), `shift` (animated) |
-| `wave_interference` | Ripple-tank interference of two circular point sources (Centre + `srcX` offset) | none (uses Centre) | `srcX` (300.0), `phase` (animated), + colours |
 
 ### `diagnostics/`
 In-comp inspection tools on Front 1.

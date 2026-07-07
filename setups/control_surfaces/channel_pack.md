@@ -28,6 +28,16 @@ end. Saves wiring and keeps related masks travelling together.
 - Blue is luma rather than a raw channel so the third slot can carry a brightness/key signal;
   swap it for `b1` in `generate_setups.py` if you'd rather ferry a literal blue channel.
 
+### Why blue is a luma, and how to pack three *mattes*
+The node has only **two Matte sockets** (`m1`, `m2`) — there is no third Matte input — so the
+third packed signal **must come from a Front input**. Blue reads **Front 1's luma** so that slot
+works whether Front 1 is a colour plate (carries its brightness/key) or a grayscale mask.
+- **Yes, you can pack three mattes:** feed your third matte into **Front 1**. For a grayscale
+  matte `r1 = g1 = b1`, so its **luma equals the matte value** — `channel_unpack` recovers it
+  exactly. No change needed; the wiring is just `m1`, `m2`, and the third matte on **Front 1**.
+- Only switch blue to a raw channel (`r1`/`b1`) if your third signal lives in a **single channel
+  of a colour** Front 1 (where luma would blend it with the other two channels).
+
 ### Practical notes
 - The packed channels are **data, not colour** — tag the output **Raw/Data** so colour
   management doesn't bend the values before you unpack them.

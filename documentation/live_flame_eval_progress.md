@@ -23,7 +23,15 @@ regenerate" freeze). **Now: track status here as a checklist and leave the files
 - **Scope:** all 155 setups (new format — none carry over from the old eval).
 - **Order:** highest-risk first (heaviest GLSL, below), then the rest by category.
 
-## Status: 35 / 156 confirmed (new format)  ·  ✅ PHASE 1 COMPLETE (all 16 highest-risk) · ▶ Phase 2 (stmap_generators + stylization done)
+## Status: 65 / 156 confirmed (new format)  ·  ✅ PHASE 1 & PHASE 2 COMPLETE · ▶ Phase 3 next
+Phase 2 done: stmap_generators, stylization, optics_physics, control_surfaces, sdf_shapes,
+pattern_generators, diagnostics — all confirmed in the updated node.
+- ✅ **entire `sdf_shapes/` folder (8)** confirmed 2026-07-07: sdf_lattice (Phase 2), smin_metaballs
+  + metaball_ring (already ✅), + sdf_box/sdf_circle/sdf_polygon/sdf_ring/sdf_rounded_box (Phase 4).
+- ✅ **entire `pattern_generators/` folder (16)** confirmed 2026-07-07: wood_grain, marble,
+  triangle_tiling, log_polar_spiral, point_grid, zone_plate (Phase 2) + bricks, checkerboard,
+  noise_random, rays, rings (Phase 4) + already-✅ radial_ramp, hex_grid, starfield, truchet,
+  wave_interference.
 
 ### ⚠️ Centre-convention fix (2026-07-07) — 4 stmap setups re-opened
 PR245 defaults Centre to the image middle. Four ST-map setups did their OWN `-0.5` centering and
@@ -57,11 +65,11 @@ Library is now **156** (added `metaball_ring`). Animated channel (thin_film `shi
 ### Phase 2 — remaining, heavier GLSL / node-deps
 - stmap_generators: ✅ chromatic_aberration_map · ✅ coc_from_depth · ✅ glitch_block_map · ✅ kaleidoscope_map · ✅ lens_distort_map · ✅ polar_to_cartesian · ✅ thin_lens_coc   ← stmap_generators DONE (7/7)
 - stylization: ✅ bayer_dither (levels default 2→5) · ✅ crosshatch · ✅ crt (added `scale` var for phosphor size, default 3) · ✅ halftone · ✅ palette_quantize · ✅ truchet (moved → pattern_generators)   ← stylization DONE (6/6)
-- optics_physics: moire, radar_sweep, wave_interference
-- control_surfaces: channel_pack, channel_unpack, dual_output_depth, painted_grade
-- sdf_shapes: sdf_lattice
-- pattern_generators: wood_grain, marble, triangle_tiling, log_polar_spiral, point_grid, zone_plate
-- diagnostics: clip_highlighter, contour_lines, exposure_zebra, gamut_clip, negative_pixel_highlighter, zone_system_posterize
+- optics_physics: ✅ moire · ✅ radar_sweep · ✅ wave_interference (moved → pattern_generators)   ← optics_physics DONE (only moire + radar_sweep remain in the folder)
+- control_surfaces: ✅ channel_pack (added md explanation of luma/3-matte packing) · ✅ channel_unpack · ✅ dual_output_depth · ✅ painted_grade   ← control_surfaces DONE (4/4)
+- sdf_shapes: ✅ sdf_lattice   ← whole sdf_shapes folder confirmed (see note above)
+- pattern_generators: ✅ wood_grain · ✅ marble · ✅ triangle_tiling · ✅ log_polar_spiral · ✅ point_grid · ✅ zone_plate   ← whole pattern_generators folder confirmed (16/16)
+- diagnostics: ✅ clip_highlighter · ✅ contour_lines · ✅ exposure_zebra · ✅ gamut_clip · ✅ negative_pixel_highlighter · ✅ zone_system_posterize   ← diagnostics DONE (9/9, incl. the 3 Phase-1 ones)
 
 ### Phase 3 — remaining, lighter per-pixel math
 - color_grade: cosine_palette, lens_vignette, cineon_to_linear, linear_to_cineon, logc_to_linear, linear_to_logc, acescct_to_linear, linear_to_acescct, saturation_by_luma, highlight_desaturate, hue_preserving_clip
@@ -85,6 +93,8 @@ tick the checklist above (✅/❌) — do NOT move the file.
   texture, not analytic physics). README row moved.
 - **truchet**: stylization → pattern_generators — ✅ APPLIED 2026-07-07 (pure procedural tiling
   generator). README row moved.
+- **wave_interference**: optics_physics → pattern_generators — ✅ APPLIED 2026-07-07 (procedural
+  two-colour generator). README row moved.
 
 ## New backlog idea captured during eval (already in setup_expansion_backlog.md)
 - `digital_counter` (7-seg) **alphabet/alphanumeric** — needs 14/16-segment layout; bigger truth
