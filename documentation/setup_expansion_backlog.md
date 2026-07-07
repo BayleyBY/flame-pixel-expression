@@ -29,7 +29,7 @@ Mappers and pure-builtin utilities that upgrade every scalar field already in th
 - ☑ **uv_test_chart** — combined UV/lens calibration chart: UV colour ramp + grid + crosshair
   + rings, to check an STMap/lens. `vec3(uv,.5)` + `step(.98,fract(uv*N))` grid + centre cross.
   Inputs: none. Expects: data. Gap: only bare gradients exist.
-- ☑ **stmap_qc_overlay** — QC an ST/UV map: tint where UV leaves 0..1, mark the 0.5 seam,
+- ☑ **st_uv_map_inspector** (was stmap_qc_overlay) — QC an ST/UV map: tint where UV leaves 0..1, mark the 0.5 seam,
   checker from UV values. `oob=step(1.,max(r1,g1))+step(r1*g1,0.)`; checker
   `mod(floor(r1*N)+floor(g1*N),2)`. Inputs: Front1=STmap. Expects: data.
   Depends: pairs with the ST-map generators. Gap: nothing QCs them.
@@ -129,7 +129,7 @@ _Built 2026-06-25: Tier 3 = 5 AOV/technical-pass tools; Tier 4 = 13 setups (voro
   `chromatic_aberration_map` STMap). A per-pixel version is only a stylised radial tint. Skippable.
 
 ### Captured during Live-Flame eval
-- ☐ **seven_segment alphabet / alphanumeric** — extend the SDF seven-segment approach to letters.
+- ☐ **digital_counter alphabet / alphanumeric** (the 7-seg setup, formerly `seven_segment`) — extend the SDF seven-segment approach to letters.
   Plain 7-seg can fake a crude A–F (hex) + some letters, but full A–Z really wants a **14- or
   16-segment** ("starburst") layout. Risk: 14/16 bars = a much bigger unrolled truth table than
   the 7-bar digit, which is *already the longest expression in the library* — likely needs a

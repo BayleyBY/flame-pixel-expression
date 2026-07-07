@@ -1,10 +1,18 @@
 # Pixel Expression — Save File Format (`.pixel_expression_node`)
 
-Reverse-engineered from `pixelexpression1.pixel_expression_node` (kept in this folder as a
-worked example; Flame 2027.1, Version `21.020000`). The file is a **single-line XML**
-document. A sibling
-`<name>.pixel_expression_node.p` is just a proxy thumbnail for the media browser —
-ignore it when authoring.
+Originally reverse-engineered from `pixelexpression1.pixel_expression_node` (kept in this
+folder as the old worked example; Flame 2027.1, Version `21.020000`), then **updated for the
+PR245 node change** (2026-07-07) against fresh Flame saves in `PR245/`
+(`color_blindness_pr245`, `alpha_fringe_pr245`, `radial_ramp_animated_pr245`). The file is a
+**single-line XML** document. A sibling `<name>.pixel_expression_node.p` is just a proxy
+thumbnail for the media browser — ignore it when authoring.
+
+> **⚠️ PR245 changed the `<State>` structure** (same `<Version>` string, so it fails
+> *silently*). The three changes, all captured below: (1) four new `<…Declarations>` blocks
+> after the channel expressions; (2) variables moved from 8 flat `Variable0..7`/`VariableName0..7`
+> slots to a single name-keyed `<Variables>` list; (3) static channels dropped
+> `<Size>`/`<KeyVersion>`/`<KFrames>`. Also: Centre now defaults to the image middle, and both
+> `centre`/`center` spellings are recognised.
 
 > **Inputs are NOT stored here.** Front 1/2, Constraint, Matte 1/2 wiring lives in the
 > Batch/BFX setup, not in this node file. This file only holds the node's internal state.
@@ -37,50 +45,63 @@ ignore it when authoring.
 
 ## `<State>`
 
-### Channel expressions (verbatim GLSL strings)
+### Channel expressions (verbatim GLSL strings) + declaration blocks
 ```
 <RedExpression>…</RedExpression>
 <GreenExpression>…</GreenExpression>
 <BlueExpression>…</BlueExpression>
 <MatteExpression>…</MatteExpression>
+<RedDeclarations></RedDeclarations>       <!-- NEW (PR245): per-channel locals from the -->
+<GreenDeclarations></GreenDeclarations>   <!-- multi-line Expression Editor. Emitted empty -->
+<BlueDeclarations></BlueDeclarations>     <!-- when unused; the tags are mandatory. -->
+<MatteDeclarations></MatteDeclarations>
 ```
 
-### Custom variable NAMES (the 8 slots)
-```
-<VariableName0>mixAmt</VariableName0> … <VariableName7>t</VariableName7>
-```
-
-### Custom variable VALUES = animated channels
-Each variable's value is a full animation channel: `<Variable0>` … `<Variable7>`.
-`centre.x` / `centre.y` use the same channel structure as `<CentreX>` / `<CentreY>`.
+### Custom variables — the `<Variables>` list (NEW PR245 structure)
+Variables are no longer 8 flat `VariableName0..7` + `Variable0..7` slots. They're a single
+`<Variables>` container with one `<Variable>` per **defined** variable, keyed by name. The
+block is **omitted entirely** when a setup has no variables. Still capped at 8 by the UI.
 
 ```xml
-<Variable0>
-  <Channel Name="scene/<NODE>/variable0">
-    <Extrap>constant</Extrap>      <!-- extrapolation outside keys -->
-    <Value>1.10000682</Value>      <!-- current evaluated value -->
-    <Size>2</Size>                 <!-- number of keyframes -->
-    <KeyVersion>2</KeyVersion>
-    <KFrames>
-      <Key Index="0">
-        <Frame>1</Frame>
-        <Value>1.10000682</Value>
-        <RHandle_dX>33</RHandle_dX><RHandle_dY>0</RHandle_dY>
-        <LHandle_dX>-33</LHandle_dX><LHandle_dY>0</LHandle_dY>
-        <CurveMode>hermite</CurveMode>
-        <CurveOrder>linear</CurveOrder>
-      </Key>
-      <Key Index="1"> … Frame 100 … </Key>
-    </KFrames>
-    <Uncollapsed/>
-  </Channel>
-</Variable0>
+<Variables>
+  <Variable index="0" name="type">        <!-- name is the identifier used in expressions -->
+    <Channel Name="scene/<NODE>/type">    <!-- path uses the NAME now, not variableN -->
+      <Uncollapsed/>                      <!-- untouched-at-default: Extrap+Value omitted -->
+    </Channel>
+  </Variable>
+  <Variable index="1" name="amount">
+    <Channel Name="scene/<NODE>/amount">
+      <Extrap>constant</Extrap>
+      <Value>1</Value>                    <!-- static: lean form, no Size/KeyVersion/KFrames -->
+      <Uncollapsed/>
+    </Channel>
+  </Variable>
+</Variables>
 ```
-- `Channel Name` path is `scene/<NODE>/variableN` (and `…/centre/x`, `…/centre/y`).
-- `Size` must equal the number of `<Key>` entries.
-- A **static** (un-keyed) value: `Size=0` with an empty `<KFrames></KFrames>` and the
-  constant in `<Value>`. Confirmed to load with no keyframe set. (An animated value uses
-  `Size=N` with N `<Key>` entries.)
+
+### Channels: static (lean) vs animated
+`centre.x`/`centre.y` (`<CentreX>`/`<CentreY>`) and each variable use the same channel form.
+- **Static (PR245 lean form):** just `<Extrap>constant</Extrap><Value>V</Value><Uncollapsed/>`
+  — no `<Size>`/`<KeyVersion>`/`<KFrames>`. A channel left untouched at its default may omit
+  `<Extrap>`+`<Value>` too (only `<Uncollapsed/>`); writing them explicitly is safe.
+- **Animated:** unchanged from the old format — `<Size>N</Size><KeyVersion>2</KeyVersion>` plus a
+  `<KFrames>` block of N `<Key>` entries (`<Frame>`,`<Value>`, R/LHandle, `<CurveMode>hermite`,
+  `<CurveOrder>linear`). `Size` must equal the `<Key>` count. (Handle `dX` is cosmetic under
+  linear order — the generator's `33` is fine; Flame may write other values.)
+```xml
+<Channel Name="scene/<NODE>/radius">
+  <Extrap>constant</Extrap><Value>133.999939</Value>
+  <Size>2</Size><KeyVersion>2</KeyVersion>
+  <KFrames>
+    <Key Index="0"><Frame>1</Frame><Value>133.999939</Value>
+      <RHandle_dX>83</RHandle_dX><RHandle_dY>0</RHandle_dY>
+      <LHandle_dX>-83</LHandle_dX><LHandle_dY>0</LHandle_dY>
+      <CurveMode>hermite</CurveMode><CurveOrder>linear</CurveOrder></Key>
+    <Key Index="1"> … Frame 250 … </Key>
+  </KFrames>
+  <Uncollapsed/>
+</Channel>
+```
 
 ### Custom formulas (the 4 slots)
 ```
@@ -113,15 +134,28 @@ Each variable's value is a full animation channel: `<Variable0>` … `<Variable7
    Confirmed: empty unused variable/formula slots load fine and clear correctly.
 7. **The Matte expression can read Front inputs** (`r1`,`g1`,`b1`,`r2`…), not just
    `m1`/`m2` — confirmed by a test setup. But the **OutMatte output only renders when a
-   clip is connected to Matte 1**, regardless of what the expression references.
+   clip is connected to Matte 1**, regardless of what the expression references. The OutMatte
+   clip output is tagged as **Matte** (PR245).
+8. **PR245 centre change (confirmed in Flame):** with `centre=(0,0)`, a `radial_ramp` glow renders
+   at the **image middle** (not the top-left corner as before) and a pixel-scale radius stays
+   pixel-accurate — so `x`/`y` and `x - centre.x` distance math are unchanged; only the centre's
+   default position moved to the middle. No expression edits were needed across the library. Both
+   `centre` and `center` spellings resolve.
+9. **PR245 was a *silent* break** because `<Version>` did **not** change (still `21.020000`) — the
+   only signal was setups failing to load. Diagnosis method (repeatable): save a fresh setup from
+   the updated node, then diff its XML skeleton (tags/attrs, ignoring text) against a known-good
+   file to isolate added/removed/renamed tags.
 
 ---
 
-## Authoring a new setup from scratch
-1. Copy this file as a template.
-2. Edit `NAME` (and the filename to match) + `FrameBounds`.
-3. Replace the four `*Expression` strings.
-4. Set `VariableName0..7` and each `Variable0..7` channel (value + keys).
-5. Set `FormulaName/Expression/Type 0..3`.
-6. Fix every `Channel Name="scene/<NODE>/…"` to the new node name.
-7. Save as `<NAME>.pixel_expression_node`; Flame regenerates the `.p` proxy on load.
+## Authoring a new setup from scratch (do NOT hand-author — use `tools/generate_setups.py`)
+The generator is the single source of truth; these steps describe what it emits. For reference,
+the new-format `<State>` order is: **expressions → 4 `*Declarations` → `<Variables>` (if any) →
+`CentreX`/`CentreY` → `FormulaName/Expression/Type 0..3`**.
+1. Edit `NAME` (and the filename to match) + `FrameBounds`.
+2. Set the four `*Expression` strings; emit the four `*Declarations` empty.
+3. Emit a `<Variables>` list — one `<Variable index="N" name="…">` per variable (omit the block
+   if none); each holds a `<Channel Name="scene/<NODE>/<name>">` (lean static or keyframed).
+4. Set `FormulaName/Expression/Type 0..3` (still 4 fixed slots).
+5. Fix every `Channel Name="scene/<NODE>/…"` to the node name.
+6. Save as `<NAME>.pixel_expression_node`; Flame regenerates the `.p` proxy on load.

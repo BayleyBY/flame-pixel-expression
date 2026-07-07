@@ -1,4 +1,4 @@
-# stmap_qc_overlay
+# st_uv_map_inspector
 
 **What it does:** QCs an ST/UV map on Front 1: shows the UVs, a `checkN` checker from the UV values (spot stretch), and tints pixels outside 0..1 red. matte = OOB mask.
 

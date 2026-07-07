@@ -1,0 +1,33 @@
+<Setup><Base><Version>21.020000</Version><NAME>pixelexpression3</NAME><Note><![CDATA[# contrast
+
+**What it does:** Scales values around a `pivot`; `contrast` >1 increases.
+
+**Use case:** Add/reduce contrast about a chosen mid grey (0.18 scene-linear default).
+
+**Inputs:** Front 1
+
+**Expects:** scene-linear (pivot 0.18; use ~0.5 in display/log)
+
+**Variables:** `contrast` (1.0), `pivot` (0.18)
+
+## Notes
+
+Scales values around a `pivot`: `pivot + (value - pivot) * contrast`. Tones above the pivot
+go up, tones below go down, and the pivot itself stays put — so it stretches or compresses
+the range without shifting the midpoint.
+
+### The pivot is the whole game
+The pivot is the tone that doesn't move. Everything hinges on putting it where your "middle"
+actually is **in the current encoding**:
+- **scene-linear** → `0.18` (18% middle grey), the default.
+- **display / log / sRGB** → roughly `0.5`.
+
+Pick the wrong pivot and contrast also shifts overall brightness (the image gets darker or
+lighter as you add contrast), which usually isn't what you want.
+
+### Practical notes
+- `contrast` > 1 increases, < 1 flattens, 1.0 is unchanged.
+- **No clamp** — strong contrast can drive values negative or super-white. Follow with
+  `aov_clamp_negative` or a clamp if a downstream op can't take it.
+- Do contrast *after* exposure/white-balance so the pivot sits at the right level.
+]]></Note><Expanded>True</Expanded><ScrollBar>0</ScrollBar><Frames>0</Frames><Current_Time>1</Current_Time><Input_DataType>4</Input_DataType><ClampMode>0</ClampMode><AdapDegrad>False</AdapDegrad><ReadOnly>False</ReadOnly><NoMediaHandling>1</NoMediaHandling><UsedAsTransition>False</UsedAsTransition><FrameBounds W="4608" H="3164" X="0" Y="0" SX="38.399999999999999" SY="26.366666666666667"/></Base><State><RedExpression>(r1 - pivot) * contrast + pivot</RedExpression><GreenExpression>(g1 - pivot) * contrast + pivot</GreenExpression><BlueExpression>(b1 - pivot) * contrast + pivot</BlueExpression><MatteExpression>m1</MatteExpression><RedDeclarations></RedDeclarations><GreenDeclarations></GreenDeclarations><BlueDeclarations></BlueDeclarations><MatteDeclarations></MatteDeclarations><Variables><Variable index="0" name="contrast"><Channel Name="scene/pixelexpression3/contrast"><Extrap>constant</Extrap><Value>1</Value><Uncollapsed/></Channel></Variable><Variable index="1" name="pivot"><Channel Name="scene/pixelexpression3/pivot"><Extrap>constant</Extrap><Value>0.180000007</Value><Uncollapsed/></Channel></Variable></Variables><CentreX><Channel Name="scene/pixelexpression3/centre/x"><Uncollapsed/></Channel></CentreX><CentreY><Channel Name="scene/pixelexpression3/centre/y"><Uncollapsed/></Channel></CentreY><FormulaName0></FormulaName0><FormulaExpression0></FormulaExpression0><FormulaType0>0</FormulaType0><FormulaName1></FormulaName1><FormulaExpression1></FormulaExpression1><FormulaType1>0</FormulaType1><FormulaName2></FormulaName2><FormulaExpression2></FormulaExpression2><FormulaType2>0</FormulaType2><FormulaName3></FormulaName3><FormulaExpression3></FormulaExpression3><FormulaType3>0</FormulaType3></State></Setup>

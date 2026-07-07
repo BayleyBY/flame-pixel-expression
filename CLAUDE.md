@@ -9,7 +9,7 @@ The Pixel Expression node (Flame 2027.1+) applies per-pixel GLSL to a clip's cha
 
 ## Commands
 Generator + validator are pure-stdlib Python 3 — no deps, no venv, no install step.
-- `python3 tools/generate_setups.py` — regenerate all 155 `.pixel_expression_node` files +
+- `python3 tools/generate_setups.py` — regenerate all 156 `.pixel_expression_node` files +
   companion `.md` docs from the generator. Run after any edit to `tools/generate_setups.py`.
 - `python3 tools/validate_setups.py` — static-check every generated setup. Must be **0
   errors** (errors on reserved-name collisions; warns on unused/undefined identifiers,
@@ -25,26 +25,25 @@ Generator + validator are pure-stdlib Python 3 — no deps, no venv, no install 
 There is no unit-test suite or build beyond the above — `validate_setups.py` (static) and
 `glsl_compile_check.py` (compile) are the tests.
 
-## ⚠️ ACTIVE: Live-Flame evaluation in progress — do NOT regenerate
-A setup-by-setup **in-Flame load/visual test** is underway (started 2026-06-25). As each setup
-passes/fails in Flame it is moved (`git mv`) into an **`approved/`** or **`rejected/`** subfolder
-**inside its category folder**. Full tracker + resume point: `documentation/live_flame_eval_progress.md`.
-- **Status:** 16/155 approved, 0 rejected. Phase 1 (the 16 highest-risk setups) is complete; next
-  up is Phase 2, resuming at `stmap_generators/chromatic_aberration_map`.
-- **DO NOT run `tools/generate_setups.py` or `/sync-docs` until the eval is finished.** The
-  generator writes to `setups/<category>/<name>...` and doesn't clean first, so regenerating
-  **resurrects the originals** beside the moved copies → duplicates. The validator and
-  compile-checker use a recursive glob and are still safe to run. The planned final step is to
-  teach the generator to emit into `approved/`/`rejected/` from an approval table, restoring the
-  source-of-truth invariant — only then is regeneration safe again.
+## ⚠️ Node format changed (PR245, 2026-07-07) — library regenerated, eval reset
+A Pixel Expression node update **changed the save-file XML structure**, so every old-format setup
+silently failed to load. The format was re-reverse-engineered from fresh Flame saves (kept in
+`PR245/`), the generator + both checker tools were updated, and **all 156 setups were regenerated
+to the new format**. See "File format facts" and "Live-Flame status" below for the delta.
+- **Regeneration is safe again.** The old `approved/`/`rejected/` subfolders were flattened (the
+  16 old-format approvals no longer load in the updated node), so the layout is flat again and
+  `tools/generate_setups.py` writes the single source of truth with no duplication risk.
+- **The Live-Flame eval restarts from 0/156** against the updated node. Because only the *file
+  wrapper* changed (the GLSL/expressions are untouched), re-verification should be fast — the 16
+  previously-approved setups in particular. Tracker: `documentation/live_flame_eval_progress.md`.
 
 ## Golden rule: never hand-edit the setup files
-`tools/generate_setups.py` is the **single source of truth**. All 155 `.pixel_expression_node`
+`tools/generate_setups.py` is the **single source of truth**. All 156 `.pixel_expression_node`
 files and their companion `.md` docs are generated from it.
 - Add/change a setup → edit the `SETUPS` list, then add its `CATEGORY`, `DOCS`, and
   `EXPECTS` entries (the script warns if `DOCS`/`EXPECTS` are missing). Optionally add a
   `NOTES` entry — long-form Markdown appended to the setup's `.md` under a `## Notes`
-  heading (workflow, recipes, gotchas); all 155 setups currently have one.
+  heading (workflow, recipes, gotchas); all 156 setups currently have one.
 - Regenerate: `python3 tools/generate_setups.py`
 - Validate: `python3 tools/validate_setups.py` (must be **0 errors**; errors on reserved-name
   collisions — any var/formula shadowing a built-in/input; warns on unused vars / undefined
@@ -62,7 +61,7 @@ files and their companion `.md` docs are generated from it.
 - `.claude/commands/sync-docs.md` — the `/sync-docs` project command (regenerate, validate,
   drift-check, and sync counts + Live-Flame status across the hand-maintained docs).
 - `README.md` — human index (per-folder tables, colour-management, caveats).
-- `setups/` — the 155 generated `.pixel_expression_node` files + companion `.md` docs, in 19
+- `setups/` — the 156 generated `.pixel_expression_node` files + companion `.md` docs, in 19
   category subfolders (the loadable library).
 - `documentation/pixelexpression1.pixel_expression_node` — a real Flame-saved file kept as a
   worked example of the serialization (the one the format doc was reverse-engineered from; do
@@ -84,13 +83,28 @@ files and their companion `.md` docs are generated from it.
 ## File format facts (the non-obvious ones)
 - Single-line XML: `<Setup><Base>…</Base><State>…</State></Setup>`.
 - Channel expressions: `<RedExpression>` `<GreenExpression>` `<BlueExpression>`
-  `<MatteExpression>`. 8 variable slots, 4 formula slots — always emitted (unused = empty).
-- `FormulaType`: `0`=float `1`=vec2 `2`=vec3 `3`=vec4.
+  `<MatteExpression>`, each followed by a matching **`<…Declarations>`** block (new PR245
+  format — holds the multi-line Expression Editor's local declarations; we emit them empty).
+- **Variables (new PR245 format):** a single `<Variables>` container holding one
+  `<Variable index="N" name="…"><Channel Name="scene/<node>/<name>">…</Channel></Variable>`
+  per *defined* variable (not the old 8 fixed `Variable0..7`/`VariableName0..7` slots). The
+  channel path uses the variable **name**, not `variableN`. The whole `<Variables>` block is
+  **omitted** when a setup has no variables. Still capped at 8 by the UI. Reading the old flat
+  slots is what broke both checker tools after the update.
+- **Formulas are unchanged:** still 4 fixed slots `<FormulaName/Expression/Type 0..3>`, always
+  emitted (unused = empty). `FormulaType`: `0`=float `1`=vec2 `2`=vec3 `3`=vec4.
 - **Expressions must be XML-escaped**: `<`→`&lt;`, `>`→`&gt;`, `&`→`&amp;`. A raw `<`
   makes the file **silently fail to load with no error**. The generator handles this.
-- Static value = un-keyed channel (`Size 0`, empty `<KFrames>`). Animation = a list of
-  `(frame, value)` pairs → multi-key channel. Centre defaults to `0,0`, un-keyed.
-- Input wiring is NOT stored — connect Front/Matte in Batch.
+- **Channels:** a *static* channel is now the **lean** form
+  `<Channel Name><Extrap>constant</Extrap><Value>V</Value><Uncollapsed/></Channel>` (no
+  `<Size>`/`<KeyVersion>`/`<KFrames>`). An *animated* channel keeps the old
+  `Size`/`KeyVersion`/`KFrames`/`Key` block (a list of `(frame, value)` pairs).
+- **Centre now defaults to the image middle:** stored `centre=(0,0)` renders at the middle
+  (not the top-left corner as before), while `x`/`y` and pixel distances are unchanged — so
+  `x - centre.x` math and pixel-scale radii still work, and centre-based shapes auto-centre.
+  No setup sets a custom centre, so no expression edits were needed. Both `centre` and `center`
+  spellings are now recognised in expressions.
+- Input wiring is NOT stored — connect Front/Matte in Batch. OutMatte output is tagged as Matte.
 
 ## GLSL / node gotchas
 - It's GLSL, not Nuke syntax: float literals need a decimal (`1.0`, `x/2.0`); `clamp`
@@ -98,7 +112,8 @@ files and their companion `.md` docs are generated from it.
 - **`uv` is a reserved injected variable** (normalized coords) — never name a
   variable/formula `uv` (redefinition error). Avoid `color`, `pos`, `coord`, `gl_*`.
 - Inputs: `r1 g1 b1` (Front 1), `r2 g2 b2` (Front 2), `m1`/`m2` (Matte 1/2). Built-ins:
-  `x y width height centre.x centre.y E PI`. No `frame`/time — animate a variable instead.
+  `x y width height centre.x centre.y E PI` (also `center.*` — both spellings recognised since
+  PR245; `centre` now sits at the image middle). No `frame`/time — animate a variable instead.
 - **Confirmed:** the Matte expression CAN read Front inputs (`r1`…), and formulas can use
   Front inputs. But **OutMatte only renders when Matte 1 is connected**, whatever the
   expression references.
@@ -145,7 +160,7 @@ seven-segment builders `_seven_seg_expr()`/`_seg_bar()`/`_seg_eq()` + `_SEG_ON`/
 `_LUMA01`; and the `DEPENDS`/`_dep()` machinery that renders each setup's node-dependency
 section. `stylization/` setups are collected in a `_STYLIZATION` list appended to `SETUPS`.
 
-## Folders (155 setups, all under `setups/`)
+## Folders (156 setups, all under `setups/`)
 `alpha_matte_tools` `pattern_generators` `animated_generators` `color_grade`
 `3d_position_tools` `depth_tools` `aov_tools` `uv_distortion` `noise` `sdf_shapes`
 `hsv_color` `matte_combine` `utility`
@@ -171,56 +186,44 @@ so everything is inlined). All are verified in Flame, but they're the most compl
 the library — so if you edit one, they're the most likely to need a fresh live-compile check.
 
 ## Live-Flame status
-- **The original 83 setups are verified loading and working in Flame** (every folder up to and
-  including `utility`, incl. the branchless rgb↔hsv conversions, the full
-  `aov_tools/`/`depth_tools/`/`3d_position_tools/`/`uv_distortion/` sets, and `hsl_targeted` —
-  the longest single expression in the library).
-- **The remaining 72 setups pass an offline GLSL compile-check but are NOT yet confirmed loading
-  in Flame.** These are the 29 in the six unconventional categories (`fractals`,
-  `stmap_generators`, `control_surfaces`, `stylization`, `optics_physics`, `diagnostics`), **plus
-  the 43 added in the 2026-06-25 expansion (Tiers 1–4)**: Tier-1 (`cosine_palette`,
-  `lens_vignette`, `false_color_exposure`, `contour_lines`, `stmap_qc_overlay`, `uv_test_chart`,
-  `point_grid`, `zone_plate`, `thin_lens_coc`); Tier-2 log curves
-  `cineon_to_linear`/`linear_to_cineon`/`logc_to_linear`/`linear_to_logc`/`acescct_to_linear`/
-  `linear_to_acescct` + `saturation_by_luma`, `highlight_desaturate`, `hue_preserving_clip`,
-  `garbage_gradient_matte`, `holdout_matte`, `matte_screen_multiply`, `matte_falloff_ramp`,
-  `negative_pixel_highlighter`, `clip_highlighter`, `zone_system_posterize`; Tier-3 AOV tools
-  `motion_vector_visualize`, `motion_vector_normalize`, `normal_renormalize`, `normal_to_facing`,
-  `position_range_remap`; Tier-4 patterns `voronoi_edges`, `voronoi_manhattan`,
-  `voronoi_chebyshev`, `hex_grid`, `sdf_lattice`, `smin_metaballs`, `wood_grain`, `marble`,
-  `triangle_tiling`, `log_polar_spiral`, `wave_bounce`, `wave_blip`, `wave_parabolic`. All 155
-  setups compile cleanly under `tools/glsl_compile_check.py` (`glslangValidator`,
-  `#version 410 core`) — and because the 83 already-Flame-verified setups all pass that same check,
-  it's a well-calibrated proxy: a clean compile is strong evidence they will load. What it can't
-  confirm: Flame's exact dialect/expression-length acceptance, OutMatte wiring, and visual
-  correctness. So treat them as **compile-checked, in-Flame confirmation pending** — do a real load
-  before fully trusting. (Some are additionally **math-verified**: the Tier-2 log curves round-trip
-  against published anchors — LogC 0.18→0.391, ACEScct 0.18→0.4136 — and the `voronoi_edges` F1/F2
-  trick and `smin_metaballs` smooth-min were numerically checked.) Highest-risk to check first:
-  `seven_segment` (its `seg` formula is the longest single expression in the library now),
-  the three `fractals` (deeply-nested vec3 formula chains), `heat_haze_map` (inlines the fbm
-  builder), `thin_film`/`starfield` (swizzled vec formulas), `color_blindness` (4 matrix
-  formulas), `false_color_exposure` / `stmap_qc_overlay` / `uv_test_chart` (nested vec3 `mix`
-  cascades, and the first setups to read the injected `uv`), and from the Tier-4 wave
-  `voronoi_edges` / `voronoi_manhattan` / `voronoi_chebyshev` (9-term distance chains — the
-  heaviest new GLSL, `voronoi_edges` writes its F1/F2 distance set twice), `hex_grid` (the `gv`
-  nearest-centre ternary), and `smin_metaballs` (nested smooth-min). If any fails to load, fix it
-  in `tools/generate_setups.py` and regenerate.
-- **History/lesson:** `hsl_targeted` first failed to load because it declared a variable
-  `width` (collides with the injected built-in `width`); renamed to `bandWidth`. The
-  validator now flags ANY var/formula that shadows a built-in/input (not just `uv`), so this
-  whole silent-no-load class is caught statically — re-run `tools/validate_setups.py` after edits.
+- **The PR245 format change reset the in-Flame verification.** All prior in-Flame approvals (the
+  original 83 + the 16 Phase-1 approvals) were against the **old** file format/node and **do not
+  transfer** — those old-format files no longer load. All 156 setups have been **regenerated to the
+  new format** and now need a fresh in-Flame load pass. Good news: only the *file wrapper* changed
+  (GLSL/expressions untouched), so most should re-verify quickly.
+- **Confirmed in the updated node so far:** see `documentation/live_flame_eval_progress.md` for the
+  live count (Phase 1 — the 16 highest-risk — is complete; the whole `noise/` folder + `radial_ramp`
+  + the new `metaball_ring` are also confirmed). The new format is proven correct, including animated
+  channels (`thin_film`/`metaball_ring`). Everything not yet ticked is **new-format, in-Flame
+  confirmation pending**.
+- **All 156 pass the offline checkers** (both recalibrated for the new format):
+  `tools/validate_setups.py` → 0 errors/0 warnings, and `tools/glsl_compile_check.py`
+  (`glslangValidator`, `#version 410 core`) → 156 compile. A clean compile is strong evidence a
+  setup will load, but can't confirm Flame's exact dialect/expression-length acceptance, OutMatte
+  wiring, or visual correctness — do a real load before fully trusting.
+- **Highest-risk to re-check first** (heaviest GLSL — most likely to expose a dialect/length limit):
+  `digital_counter` (the 7-segment digit — longest single expression), the three `fractals` (deeply-nested vec3 formula
+  chains), `heat_haze_map` (inlines the fbm builder), `thin_film`/`starfield` (swizzled vec
+  formulas), `color_blindness` (4 matrix formulas), `false_color_exposure`/`st_uv_map_inspector`/
+  `uv_test_chart` (nested vec3 `mix` cascades; read the injected `uv`), and the Voronoi trio
+  `voronoi_edges`/`voronoi_manhattan`/`voronoi_chebyshev` (9-term distance chains), `hex_grid`
+  (the `gv` nearest-centre ternary), `smin_metaballs` (nested smooth-min).
+- **History/lessons (still apply):**
+  - `hsl_targeted` first failed to load because it declared a variable `width` (collides with the
+    injected built-in). The validator flags ANY var/formula shadowing a built-in/input — re-run it
+    after edits.
+  - The **PR245 break** was purely structural: the new node stores variables as a `<Variables>`
+    name-keyed list + adds `<…Declarations>` blocks, and both checker tools were reading the old
+    flat `Variable0..7` slots (they reported everything undefined until updated). If load/compile
+    tooling suddenly reports mass-undefined identifiers after a node update, suspect a format change
+    first — re-diff a fresh Flame save against `PR245/` using the method in `documentation/`.
 - If the user reports a load/compile failure, fix the expression in `tools/generate_setups.py`
-  and regenerate — never patch the `.pixel_expression_node` directly. A silent
-  no-error load failure usually means an unescaped `<`/`>` or a reserved name — a built-in
-  (`uv`, `x`, `y`, `width`, `height`, `centre`, `E`, `PI`) or input (`r1`…) used as a
-  variable/formula; `tools/validate_setups.py` now catches the reserved-name case.
-- **Outstanding next step (to continue later):** the **in-Flame load test is actively in progress**
-  (see the "ACTIVE" section at the top + `documentation/live_flame_eval_progress.md`). **16 of the 72
-  compile-checked-pending setups are now Flame-verified** (all of Phase 1, the highest-risk batch) and
-  live in `approved/` subfolders; **56 pending remain**, plus a Phase-4 re-confirm pass over the
-  original 83. **Resume at `stmap_generators/chromatic_aberration_map`** (Phase 2). Counts here/README
-  are NOT yet reconciled via `/sync-docs` — that's deferred until the eval finishes and the generator
-  learns the `approved/`/`rejected/` layout (running `/sync-docs` now would regenerate and duplicate).
-  For *more* setups, pull the next idea from `documentation/setup_expansion_backlog.md` — Tiers 1–4 are
-  done; only the Deferred / flagged items remain (constraint-risky), so net-new ideas go there first.
+  and regenerate — never patch the `.pixel_expression_node` directly. A silent no-error load failure
+  usually means an unescaped `<`/`>`, a reserved name (a built-in `uv`/`x`/`y`/`width`/`height`/
+  `centre`/`E`/`PI` or input `r1`… used as a variable/formula — the validator catches this), or a
+  format drift from the generator.
+- **Outstanding next step:** run the in-Flame load pass over all 156 new-format setups (tracker:
+  `documentation/live_flame_eval_progress.md`), starting with the highest-risk list above. Counts
+  here/README can now be reconciled with `/sync-docs` (the freeze is lifted and the layout is flat).
+  For *more* setups, pull the next idea from `documentation/setup_expansion_backlog.md` — Tiers 1–4
+  are done; only the Deferred / flagged items remain.

@@ -24,4 +24,4 @@ stretch/squash, and the centre crosshair marks the optical centre.
 1. Load `uv_test_chart` as a generator.
 2. Send it through the **STMap / lens distort** you're testing.
 3. Read the result: bent grid = distortion, colour shift = where UVs map. Pairs directly with
-   `stmap_qc_overlay` (which inspects the *map itself* rather than the warped chart).
+   `st_uv_map_inspector` (which inspects the *map itself* rather than the warped chart).

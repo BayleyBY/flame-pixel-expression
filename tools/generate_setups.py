@@ -33,19 +33,23 @@ def _keyframe(index, frame, value):
 
 def channel(path, value):
     """Animation channel. `value` is either a scalar (static — NO keyframes, just a
-    constant value) or a list of (frame, value) pairs (animated, linear interpolation)."""
+    constant value) or a list of (frame, value) pairs (animated, linear interpolation).
+
+    New (PR245+/Flame node update) format: a STATIC channel omits <Size>/<KeyVersion>/
+    <KFrames> entirely (lean form). An ANIMATED channel keeps them, unchanged."""
     if isinstance(value, (list, tuple)) and value and isinstance(value[0], (list, tuple)):
         keys = list(value)
         current = keys[0][1]
     else:
         keys = []
         current = value
-    kf = "".join(_keyframe(i, f, v) for i, (f, v) in enumerate(keys))
-    return (
-        f'<Channel Name="{path}"><Extrap>constant</Extrap><Value>{current}</Value>'
-        f'<Size>{len(keys)}</Size><KeyVersion>2</KeyVersion><KFrames>{kf}</KFrames>'
-        f'<Uncollapsed/></Channel>'
-    )
+    head = f'<Channel Name="{path}"><Extrap>constant</Extrap><Value>{current}</Value>'
+    if keys:
+        kf = "".join(_keyframe(i, f, v) for i, (f, v) in enumerate(keys))
+        body = f'<Size>{len(keys)}</Size><KeyVersion>2</KeyVersion><KFrames>{kf}</KFrames>'
+    else:
+        body = ''  # static: lean form, no keyframe scaffolding
+    return head + body + '<Uncollapsed/></Channel>'
 
 
 def build(name, red, green, blue, matte,
@@ -54,9 +58,8 @@ def build(name, red, green, blue, matte,
     variables = (variables or [])[:8]
     formulas = (formulas or [])[:4]
 
-    # Pad to fixed slot counts.
-    var_names = [v[0] for v in variables] + [""] * (8 - len(variables))
-    var_vals = [v[1] for v in variables] + [0] * (8 - len(variables))
+    # Formulas remain 4 fixed slots (emitted empty when unused). Variables are NO
+    # longer padded to 8 fixed slots — the new format lists only the defined ones.
     forms = list(formulas) + [("", "", 0)] * (4 - len(formulas))
 
     base = (
@@ -75,16 +78,30 @@ def build(name, red, green, blue, matte,
         f'<MatteExpression>{xml_escape(matte)}</MatteExpression>'
     )
 
-    names_xml = "".join(f'<VariableName{i}>{xml_escape(var_names[i])}</VariableName{i}>' for i in range(8))
+    # New format: four per-channel local-declaration blocks (from the multi-line
+    # Expression Editor). We author single-line expressions with no locals, so these
+    # are always emitted empty — but the tags are mandatory in the new skeleton.
+    decls_xml = (
+        '<RedDeclarations></RedDeclarations><GreenDeclarations></GreenDeclarations>'
+        '<BlueDeclarations></BlueDeclarations><MatteDeclarations></MatteDeclarations>'
+    )
+
+    # New format: variables are a <Variables> list keyed by name — only the defined
+    # ones are emitted, and the whole block is omitted when there are none. The channel
+    # path now uses the variable NAME (scene/<node>/<name>), not scene/<node>/variableN.
+    if variables:
+        var_items = "".join(
+            f'<Variable index="{i}" name="{xml_escape(vn)}">'
+            f'{channel(f"scene/{name}/{vn}", vv)}</Variable>'
+            for i, (vn, vv) in enumerate(variables)
+        )
+        vars_xml = f'<Variables>{var_items}</Variables>'
+    else:
+        vars_xml = ''
 
     centre_xml = (
         f'<CentreX>{channel(f"scene/{name}/centre/x", centre[0])}</CentreX>'
         f'<CentreY>{channel(f"scene/{name}/centre/y", centre[1])}</CentreY>'
-    )
-
-    vars_xml = "".join(
-        f'<Variable{i}>{channel(f"scene/{name}/variable{i}", var_vals[i])}</Variable{i}>'
-        for i in range(8)
     )
 
     forms_xml = "".join(
@@ -94,7 +111,8 @@ def build(name, red, green, blue, matte,
         for i in range(4)
     )
 
-    xml = f'{base}<State>{exprs}{names_xml}{centre_xml}{vars_xml}{forms_xml}</State></Setup>'
+    # State order (new format): expressions, declarations, variables, centre, formulas.
+    xml = f'{base}<State>{exprs}{decls_xml}{vars_xml}{centre_xml}{forms_xml}</State></Setup>'
 
     out_dir = os.path.join(OUT_DIR, category) if category else OUT_DIR
     os.makedirs(out_dir, exist_ok=True)
@@ -217,6 +235,24 @@ def _smin(a, b, k):
     formula names (they each appear ~3x, so keep them simple to avoid expansion)."""
     h = f"max({k} - abs(({a}) - ({b})), 0.0) / {k}"
     return f"(min(({a}), ({b})) - {h} * {h} * {k} * 0.25)"
+
+
+# metaball_ring: 6 blobs on a ring around Centre. Independent x/y per blob would need
+# 12 variables (budget is 8), so positions are DERIVED from one `spin` angle + fixed
+# per-blob offsets (i·2π/6). The 6 distances are packed into two vec3 formulas (da/db)
+# and welded as two triads + a final smooth-min — referencing the packed distances by
+# swizzle keeps the nested smin from re-expanding.
+_RING6_ANG = ["0.0", "1.0471976", "2.0943951", "3.1415927", "4.1887902", "5.2359877"]
+
+
+def _ring6_dist(a):
+    ang = f"({a} + spin * 6.2831853)"
+    return (f"length(vec2(x - centre.x - ringRadius * cos{ang}, "
+            f"y - centre.y - ringRadius * sin{ang})) - blobRadius")
+
+
+_RING6_DA = "vec3(" + ", ".join(_ring6_dist(_RING6_ANG[i]) for i in (0, 1, 2)) + ")"
+_RING6_DB = "vec3(" + ", ".join(_ring6_dist(_RING6_ANG[i]) for i in (3, 4, 5)) + ")"
 
 
 # rgb<->hsv helper formulas (Hocevar, branchless). p=vec4, q=vec4.
@@ -449,7 +485,7 @@ _STYLIZATION = [
     # `digit` 0..9 (KEYFRAME it for a frame counter) lights bars via an arithmetic truth
     # table; `seg` = union of the lit bars. Drawn at Centre; `digScale` px = vertical half-
     # size; `thick` = stroke half-width; `hw`/`hh` = bar half-lengths. Two-colour (bg->lit).
-    dict(name="seven_segment",
+    dict(name="digital_counter",
          red="mix(0.0, lit, seg)", green="mix(0.05, lit, seg)", blue="mix(0.0, lit, seg)",
          matte="seg",
          variables=[("digit", 0.0), ("digScale", 150), ("thick", 0.1),
@@ -1420,7 +1456,7 @@ SETUPS = [
     # ST-map QC overlay — Front 1 = an ST/UV map (r1=U, g1=V). Shows the UVs as colour,
     # a `checkN` checker built from the UV values (spot stretch), and tints out-of-0..1
     # pixels red. matte = the out-of-bounds mask. Diagnostic for an upstream ST-map.
-    dict(name="stmap_qc_overlay",
+    dict(name="st_uv_map_inspector",
          red="col.x", green="col.y", blue="col.z",
          matte="clamp(step(1.0, r1) + step(1.0, g1) + (1.0 - step(0.0, r1)) + (1.0 - step(0.0, g1)), 0.0, 1.0)",
          variables=[("checkN", 20.0)],
@@ -1713,6 +1749,16 @@ SETUPS = [
                    ("d2", "length(vec2(x - centre.x - c2x, y - centre.y - c2y)) - radius", 0),
                    ("d3", "length(vec2(x - centre.x - c3x, y - centre.y - c3y)) - radius", 0)]),
 
+    # Metaball ring — 6 point sources on a ring around Centre, smooth-min welded into one
+    # gooey blob ring. Positions derive from `spin` (keyframe it to rotate the ring) so 6
+    # blobs fit the 8-var budget where smin_metaballs' independent x/y capped it at 3.
+    dict(name="metaball_ring",
+         **_solid("1.0 - smoothstep(-3.0, 3.0, " + _smin("sa", "sb", "k") + ")"),
+         variables=[("ringRadius", 200.0), ("blobRadius", 90.0), ("k", 80.0), ("spin", 0.0)],
+         formulas=[("da", _RING6_DA, 2), ("db", _RING6_DB, 2),
+                   ("sa", _smin(_smin("da.x", "da.y", "k"), "da.z", "k"), 0),
+                   ("sb", _smin(_smin("db.x", "db.y", "k"), "db.z", "k"), 0)]),
+
     # Wood grain — concentric rings around Centre warped by value-noise turbulence.
     # `freq` ring spacing, `turb` noise distortion. Default colours = brown/tan.
     dict(name="wood_grain",
@@ -1873,12 +1919,12 @@ CATEGORY = {
     "crt": "stylization",
     "truchet": "stylization",
     "palette_quantize": "stylization",
-    "seven_segment": "stylization",
+    "digital_counter": "stylization",
     # Optics / physics generators
     "thin_film": "optics_physics",
     "wave_interference": "optics_physics",
     "moire": "optics_physics",
-    "starfield": "optics_physics",
+    "starfield": "pattern_generators",  # recat from optics_physics (hash/noise texture, not analytic physics)
     "radar_sweep": "optics_physics",
     # Diagnostics
     "color_blindness": "diagnostics",
@@ -1890,7 +1936,7 @@ CATEGORY = {
     "lens_vignette": "color_grade",
     "false_color_exposure": "diagnostics",
     "contour_lines": "diagnostics",
-    "stmap_qc_overlay": "diagnostics",
+    "st_uv_map_inspector": "diagnostics",
     "uv_test_chart": "utility",
     "point_grid": "pattern_generators",
     "zone_plate": "pattern_generators",
@@ -1924,6 +1970,7 @@ CATEGORY = {
     "hex_grid": "pattern_generators",
     "sdf_lattice": "sdf_shapes",
     "smin_metaballs": "sdf_shapes",
+    "metaball_ring": "sdf_shapes",
     "wood_grain": "pattern_generators",
     "marble": "pattern_generators",
     "triangle_tiling": "pattern_generators",
@@ -2254,7 +2301,7 @@ DOCS = {
     "palette_quantize": ("Snaps Front 1 to `levels` tonal steps and tints the result between two palette anchor colours (default 4-tone; set the colours for a Game-Boy green ramp).",
                          "Limited-palette / pixel-art stylisation, duotone posterise, retro console look.",
                          "Front 1"),
-    "seven_segment": ("Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node. Keyframe `digit` for a frame counter.",
+    "digital_counter": ("Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node. Keyframe `digit` for a frame counter.",
                       "On-screen counters/timers/HUD numerals, retro display overlays, datamosh captions.",
                       "none (generator; composite over your plate)"),
     # optics_physics
@@ -2299,7 +2346,7 @@ DOCS = {
     "uv_test_chart": ("Generates a UV/lens calibration chart: R=U,G=V colour ramp + white grid (`gridN` cells) + red centre crosshair (`lineW` thick).",
                       "Sanity-check an STMap or lens warp — load it, warp it, see how the grid/UVs move.",
                       "none (generator)"),
-    "stmap_qc_overlay": ("QCs an ST/UV map on Front 1: shows the UVs, a `checkN` checker from the UV values (spot stretch), and tints pixels outside 0..1 red. matte = OOB mask.",
+    "st_uv_map_inspector": ("QCs an ST/UV map on Front 1: shows the UVs, a `checkN` checker from the UV values (spot stretch), and tints pixels outside 0..1 red. matte = OOB mask.",
                          "Validate an ST map before an STMap warp — catch out-of-range UVs and stretching.",
                          "Front 1 (an ST/UV map)"),
     "lens_vignette": ("Physical cos⁴ lens vignette around Centre: `falloff` sets how fast it darkens (larger = gentler), `amount` mixes it in. Multiplies Front 1.",
@@ -2398,6 +2445,9 @@ DOCS = {
     "smin_metaballs": ("Three point sources merged with a polynomial smooth-min (`k` = blend radius) into one gooey blob field; centres are offsets from Centre. Result on RGB + Matte.",
                        "Organic blobby alpha mattes, lava-lamp/metaball shapes, soft union bases.",
                        "none (uses Centre)"),
+    "metaball_ring": ("Six point sources on a ring around Centre, welded with a polynomial smooth-min (`k`) into one gooey blob ring; `ringRadius`/`blobRadius` size it, keyframe `spin` to rotate. RGB + Matte.",
+                      "Rotating metaball rings, blob clusters, lava-lamp / loader animations, organic ring mattes.",
+                      "none (uses Centre)"),
     "wood_grain": ("Concentric rings around Centre warped by value-noise turbulence (`freq` spacing, `turb` distortion). Default colours brown/tan; two-colour.",
                    "Procedural wood texture, tree-ring patterns, organic concentric distortion.",
                    "none (uses Centre)"),
@@ -2512,7 +2562,7 @@ EXPECTS = {
     "crt": "display-referred / working image (look applied multiplicatively)",
     "truchet": _GEN,
     "palette_quantize": "display-referred / working image (luma-driven look)",
-    "seven_segment": _GEN,
+    "digital_counter": _GEN,
     # optics_physics
     "thin_film": _GEN, "wave_interference": _GEN, "moire": _GEN,
     "starfield": _GEN, "radar_sweep": _GEN,
@@ -2526,7 +2576,7 @@ EXPECTS = {
     "false_color_exposure": "scene-linear (the 18% grey reference and log2 stop bands assume scene-linear luma)",
     "contour_lines": _ANY,
     "uv_test_chart": _GEN,
-    "stmap_qc_overlay": "raw / data (Front 1 is an ST/UV coordinate map, not an image)",
+    "st_uv_map_inspector": "raw / data (Front 1 is an ST/UV coordinate map, not an image)",
     "lens_vignette": "scene-linear (multiplicative falloff is correct on linear light)",
     "point_grid": _GEN,
     "zone_plate": _GEN,
@@ -2555,7 +2605,7 @@ EXPECTS = {
     "position_range_remap": "raw / data (world/object position pass)",
     # Tier 4 expansion
     "voronoi_edges": _GEN, "voronoi_manhattan": _GEN, "voronoi_chebyshev": _GEN,
-    "hex_grid": _GEN, "sdf_lattice": _GEN, "smin_metaballs": _GEN,
+    "hex_grid": _GEN, "sdf_lattice": _GEN, "smin_metaballs": _GEN, "metaball_ring": _GEN,
     "wood_grain": _GEN, "marble": _GEN, "triangle_tiling": _GEN, "log_polar_spiral": _GEN,
     "wave_bounce": _GEN, "wave_blip": _GEN, "wave_parabolic": _GEN,
 }
@@ -2697,6 +2747,30 @@ metaball look). `k` is the blend radius: bigger `k` = longer, gooier necks.
   smooth-min earns its keep.
 - Result on RGB + Matte — an organic alpha matte or a displacement source. `smin` is verified to
   weld below `min` and never exceed it.
+""",
+    "metaball_ring": """
+## Notes
+
+The **higher-count companion** to `smin_metaballs`: six blobs arranged on a ring around the node
+**Centre** and welded with the same polynomial smooth-min into one gooey ring.
+
+### Why six here but three there
+Independent x/y for each blob costs 2 variables per blob; the node has only **8**, so
+`smin_metaballs` caps at 3 hand-placed blobs. Here the positions are **derived** — blob *i* sits at
+angle `i·60° + spin` on a circle of radius `ringRadius` — so the whole ring rides on just four
+knobs (`ringRadius`, `blobRadius`, `k`, `spin`), leaving budget to spare. The count (6) is fixed at
+build time: the node has no loops, so each blob's distance is inlined. The six distances are packed
+into two `vec3` formulas (`da`,`db`) and smooth-min'd as two triads (`sa`,`sb`) then a final weld —
+referencing the packed distances by swizzle keeps the nested `smin` from re-expanding.
+
+### Controls
+- `ringRadius` — radius of the ring the blobs sit on (px, from Centre).
+- `blobRadius` — size of each blob; raise it (or `k`) until neighbours merge into a continuous ring.
+- `k` — smooth-min blend radius: bigger = longer, gooier necks between blobs.
+- **`spin`** — rotates the whole ring. **Keyframe it** (0 → 1 = one full turn) for a rotating
+  metaball loop / loader animation.
+- Result on RGB + Matte — an organic ring matte or displacement source. Move the node **Centre** to
+  reposition the ring. For hand-placed blobs instead of a ring, use `smin_metaballs`.
 """,
     "wood_grain": """
 ## Notes
@@ -3055,9 +3129,9 @@ stretch/squash, and the centre crosshair marks the optical centre.
 1. Load `uv_test_chart` as a generator.
 2. Send it through the **STMap / lens distort** you're testing.
 3. Read the result: bent grid = distortion, colour shift = where UVs map. Pairs directly with
-   `stmap_qc_overlay` (which inspects the *map itself* rather than the warped chart).
+   `st_uv_map_inspector` (which inspects the *map itself* rather than the warped chart).
 """,
-    "stmap_qc_overlay": """
+    "st_uv_map_inspector": """
 ## Notes
 
 An **inspector for ST/UV maps** — it does **not** warp anything. Front 1 must be an ST map
@@ -4946,7 +5020,7 @@ the intermediate steps fall on the ramp between them.
 - This is the tonal-ramp approach; for a *hue*-based limited palette, qualify with
   `chroma_key` / `hsl_targeted` upstream and quantize the regions separately.
 """,
-    "seven_segment": """
+    "digital_counter": """
 ## Notes
 
 A **single 7-segment digit** rasterised straight into the frame from a number — no Text
@@ -5376,7 +5450,7 @@ DEPENDS = {
                              _DEP_NORMAL + " Must be **view/camera-space** normals — a world-space pass "
                              "won't give a camera-relative facing ratio."),
     "position_range_remap": _dep("world/object position (P) pass (Front 1) → **this node**", _DEP_P),
-    "stmap_qc_overlay": _dep("ST/UV-map source (e.g. `stmap`, `lens_distort_map`, or an EXR ST layer) → **this node**",
+    "st_uv_map_inspector": _dep("ST/UV-map source (e.g. `stmap`, `lens_distort_map`, or an EXR ST layer) → **this node**",
                              "Front 1 must be an **ST/UV map** (`red`=U, `green`=V in 0..1), not an image — it reads "
                              "the coordinate values directly to draw the checker and flag out-of-0..1 UVs. It "
                              "**outputs a view**, not a map: park it on a monitor to inspect the map, then bypass "
@@ -5413,16 +5487,23 @@ def write_doc(s):
         f.write(md)
 
 
-missing_docs = [s["name"] for s in SETUPS if s["name"] not in DOCS]
-missing_expects = [s["name"] for s in SETUPS if s["name"] not in EXPECTS]
+def generate_all():
+    missing_docs = [s["name"] for s in SETUPS if s["name"] not in DOCS]
+    missing_expects = [s["name"] for s in SETUPS if s["name"] not in EXPECTS]
 
-for s in SETUPS:
-    s.setdefault("category", CATEGORY.get(s["name"], "utility"))
-    build(**s)
-    write_doc(s)
+    for s in SETUPS:
+        s.setdefault("category", CATEGORY.get(s["name"], "utility"))
+        build(**s)
+        write_doc(s)
 
-print(f"\nDone — {len(SETUPS)} setups generated (+ per-setup .md docs).")
-if missing_docs:
-    print("WARNING: missing DOCS entries:", ", ".join(missing_docs))
-if missing_expects:
-    print("WARNING: missing EXPECTS entries:", ", ".join(missing_expects))
+    print(f"\nDone — {len(SETUPS)} setups generated (+ per-setup .md docs).")
+    if missing_docs:
+        print("WARNING: missing DOCS entries:", ", ".join(missing_docs))
+    if missing_expects:
+        print("WARNING: missing EXPECTS entries:", ", ".join(missing_expects))
+
+
+# Guard the write step so the module can be imported (for isolated testing) without
+# regenerating the whole library — important while the approved/ eval layout is live.
+if __name__ == "__main__":
+    generate_all()

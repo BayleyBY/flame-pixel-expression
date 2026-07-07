@@ -33,6 +33,7 @@ FTYPE = {"0": "float", "1": "vec2", "2": "vec3", "3": "vec4"}
 HEADER = """#version 410 core
 uniform float x, y, width, height;
 uniform vec2 centre;
+uniform vec2 center;
 uniform vec2 uv;
 uniform float r1, g1, b1, r2, g2, b2, m1, m2;
 const float E = 2.718281828459045;
@@ -49,7 +50,12 @@ def _parse(path):
         return (e.text or "") if e is not None else ""
 
     channels = [txt(f"{c}Expression") for c in ("Red", "Green", "Blue", "Matte")]
-    variables = [v for v in (txt(f"VariableName{i}") for i in range(8)) if v.strip()]
+    # New format (PR245+): variables are a <Variables> list of <Variable name="..">.
+    vars_el = root.find(".//Variables")
+    variables = []
+    if vars_el is not None:
+        variables = [nm for nm in ((v.get("name") or "").strip()
+                                   for v in vars_el.findall("Variable")) if nm]
     formulas = []
     for i in range(4):
         nm, ex = txt(f"FormulaName{i}").strip(), txt(f"FormulaExpression{i}").strip()

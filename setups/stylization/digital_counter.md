@@ -1,4 +1,4 @@
-# seven_segment
+# digital_counter
 
 **What it does:** Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node. Keyframe `digit` for a frame counter.
 

@@ -1,7 +1,7 @@
 # Pixel Expression Setup Library
 
-**155 ready-to-load `.pixel_expression_node` setups** — 83 translating the best Nuke
-expression examples to Flame GLSL, plus 72 **unconventional / experimental / utility** setups
+**156 ready-to-load `.pixel_expression_node` setups** — 83 translating the best Nuke
+expression examples to Flame GLSL, plus 73 **unconventional / experimental / utility** setups
 (fractals, ST-map generators, painted control surfaces, stylization, optics/physics,
 diagnostics, and a 2026 expansion of scalar-mappers, calibration charts & a physical lens CoC).
 Load via the node's setup browser. **Connect inputs in Batch** — wiring isn't stored in these
@@ -12,23 +12,19 @@ Tooling (in `tools/`):
   re-run to regenerate every file. Handles XML-escaping, slot padding, and folders.
 - `tools/validate_setups.py` — sanity sweep: XML well-formedness, slot counts, balanced parens,
   reserved-name collisions, and undefined-identifier checks (catches variable typos).
-  Run after any edit; current status: **155 setups, 0 errors, 0 warnings**.
+  Run after any edit; current status: **156 setups, 0 errors, 0 warnings**.
 - `tools/glsl_compile_check.py` — optional pre-Flame gate: compiles every setup's GLSL with
   `glslangValidator` (`brew install glslang`) to catch real compile errors the static checker
-  can't. Current status: **all 155 compile, 0 errors**. A proxy for — not a replacement for — a
+  can't. Current status: **all 156 compile, 0 errors**. A proxy for — not a replacement for — a
   real in-Flame load.
 
-**Live-Flame status:** the original **83 setups are confirmed loading and working in Flame** —
-every folder up to `utility/`, including the branchless rgb↔hsv conversions in `hsv_color/`
-and the full `aov_tools/`, `depth_tools/`, `3d_position_tools/`, and `uv_distortion/` sets.
-The **other 72 setups** — the six experimental categories (`fractals`, `stmap_generators`,
-`control_surfaces`, `stylization`, `optics_physics`, `diagnostics`) plus the **2026-06-25
-expansion (Tiers 1–4)** — scalar-mappers, log curves, selective-saturation, matte math, QC tools,
-AOV/technical-pass tools, and pattern/texture generators — pass the
-validator **and an offline GLSL compile-check** (`glsl_compile_check.py`), but are **not yet
-confirmed loading in Flame** — that compile-check is calibrated against the 83 Flame-verified
-setups (they all pass), so it's strong evidence, but do a real load before fully trusting. Only
-new or changed setups need a re-check after editing `tools/generate_setups.py`.
+**Live-Flame status:** a **Pixel Expression node update (PR245, 2026-07-07) changed the save-file
+format**, so all setups were regenerated to the new format and the in-Flame verification was
+**reset** — prior approvals were against the old format and no longer load. All 156 pass the
+validator and the offline GLSL compile-check; a fresh in-Flame load pass is underway (Phase 1, the
+16 highest-risk setups, plus the whole `noise/` folder and `metaball_ring`, are confirmed in the
+updated node). Because only the file *wrapper* changed — the GLSL is untouched — re-verification is
+going quickly. Live count + queue: `documentation/live_flame_eval_progress.md`.
 
 Every setup also has a companion `<name>.md` next to it with **What it does / Use case /
 Inputs / Expects (colour space) / Variables** — generated from the same script, so the
@@ -83,8 +79,9 @@ documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
 | `wood_grain` | noise-warped tree rings (brown/tan default) | none (uses Centre) | `freq` 0.02, `turb` 4.0, + colours |
 | `marble` | turbulence-veined marble (stone default) | none | `freq` 0.05, `turb` 6.0, + colours |
 | `log_polar_spiral` | self-similar log spiral (grayscale) | none (uses Centre) | `freq` 8.0, `arms` 5.0, `twist` 0.0 (anim) |
+| `starfield` | procedural stars, per-cell hash (twinkles) | none | `cellSize` 40, `twinkle` (anim), `threshold` 0.92, `brightness` 1.0 |
 
-**Two colours** (all except `noise_random` and the grayscale `log_polar_spiral`): the pattern
+**Two colours** (all except `noise_random`, the grayscale `log_polar_spiral`, and `starfield`): the pattern
 blends colour **A** `aR/aG/aB`
 (default black, where the pattern = 0) to colour **B** `bR/bG/bB` (default white, where it
 = 1). Most defaults reproduce the original grayscale (set all three of a colour equal for a
@@ -249,7 +246,8 @@ at 0,0 — use **Show Icon** to position.
 | `sdf_ring` | annulus / ring | none (uses Centre) | `radius` 200, `thickness` 20, `soft` 2 |
 | `sdf_polygon` | regular n-gon | none (uses Centre) | `radius` 200, `sides` 6, `rot` 0, `hollow` 0, `soft` 2 |
 | `sdf_lattice` | tiled rounded-square lattice (perforation) | none | `spacing` 80, `boxSize` 22, `corner` 8, `soft` 2 |
-| `smin_metaballs` | 3 blobs welded with smooth-min | none (uses Centre) | `c1x..c3y` offsets, `radius` 120, `k` 90 |
+| `smin_metaballs` | 3 hand-placed blobs welded with smooth-min | none (uses Centre) | `c1x..c3y` offsets, `radius` 120, `k` 90 |
+| `metaball_ring` | 6 blobs on a ring, smooth-min welded (rotate via `spin`) | none (uses Centre) | `ringRadius` 200, `blobRadius` 90, `k` 80, `spin` (anim) |
 
 `hollow` (box / rounded box / polygon): 0 = solid, increase toward 1 to cut out the middle
 (outer edge stays fixed). `sdf_circle` → use `sdf_ring` for the hollow version.
@@ -335,7 +333,7 @@ Per-pixel looks on Front 1 (no neighbour gather).
 | `crt` | CRT/VHS look | Front 1 (+ Matte 1 to pass alpha) | `scanDepth` (0.3), `maskDepth` (0.3), `vignette` (0.4), `scanFreq` (1.5), `roll` (animated) |
 | `halftone` | Newspaper halftone | Front 1 | `cell` (12), `angle` (0.4), + colours |
 | `palette_quantize` | Snaps Front 1 to `levels` tonal steps and tints the result between two palette anchor colours (default 4-tone | Front 1 | `levels` (4.0), + colours |
-| `seven_segment` | Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node | none (generator; composite over your plate) | `digit` (0.0), `digScale` (150), `thick` (0.1), `hw` (0.42), `hh` (0.42), `lit` (1.0) |
+| `digital_counter` | Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node | none (generator; composite over your plate) | `digit` (0.0), `digScale` (150), `thick` (0.1), `hw` (0.42), `hh` (0.42), `lit` (1.0) |
 | `truchet` | Truchet tiles | none (procedural; ignores Front) | `tile` (40), `lineW` (4.0), + colours |
 
 ### `optics_physics/`
@@ -345,7 +343,6 @@ Analytic physics/optics generators around Centre; animate the keyframed var note
 |------|--------------|---------------|----------------------|
 | `moire` | Beat pattern of two near-identical line gratings (`freqA` vs `freqB`) — an intentional moiré. | none | `freqA` (0.08), `freqB` (0.085), + colours |
 | `radar_sweep` | Rotating radar/oscilloscope sweep around Centre with an exponential afterglow trailing behind the line, plus faint range rings | none (uses Centre) | `sweep` (animated), `decay` (3.0), `ringFreq` (0.02), `glowR` (0.1), `glowG` (1.0), `glowB` (0.3) |
-| `starfield` | Procedural stars | none | `cellSize` (40.0), `twinkle` (animated), `threshold` (0.92), `brightness` (1.0) |
 | `thin_film` | Thin-film interference iridescence | none (uses Centre) | `thickness` (1.0), `scale` (0.004), `shift` (animated) |
 | `wave_interference` | Ripple-tank interference of two circular point sources (Centre + `srcX` offset) | none (uses Centre) | `srcX` (300.0), `phase` (animated), + colours |
 
@@ -359,7 +356,7 @@ In-comp inspection tools on Front 1.
 | `gamut_clip` | Flags illegal pixels | Front 1 (+ Matte 1 to render OutMatte) | `ceiling` (1.0), `tint` (1.0) |
 | `false_color_exposure` | ARRI/RED-style exposure false-colour (luma → stop bands) | Front 1 | `exposure` (0.0) |
 | `contour_lines` | Topographic iso-lines from Front 1 luminance, over the plate | Front 1 (wire depth/height to band it) | `levels` (10.0), `w` (0.2), `lineVal` (1.0) |
-| `stmap_qc_overlay` | QC overlay for an ST/UV map (checker + out-of-0..1 tint) | Front 1 (an ST/UV map) | `checkN` (20.0) |
+| `st_uv_map_inspector` | Inspector for an ST/UV map (checker + out-of-0..1 tint) | Front 1 (an ST/UV map) | `checkN` (20.0) |
 | `negative_pixel_highlighter` | Flags any-channel-negative pixels green (finds, vs `aov_clamp_negative` fixes) | Front 1 | `eps` (0.0), `tint` (1.0) |
 | `clip_highlighter` | Solid over-`ceiling` (red) / under-`floorVal` (blue) clip markers | Front 1 | `ceiling` (1.0), `floorVal` (0.0), `tint` (1.0) |
 | `zone_system_posterize` | Quantise luma into N greyscale exposure zones | Front 1 | `zones` (11.0) |

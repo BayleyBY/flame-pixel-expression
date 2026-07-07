@@ -23,7 +23,8 @@ GLSL = {
     "normalize", "reflect", "refract", "isnan", "isinf",
     "vec2", "vec3", "vec4", "float", "int", "bool",
 }
-BUILTINS = {"E", "PI", "x", "y", "width", "height", "centre", "uv"}
+# The node-update recognises both spellings of the centre built-in.
+BUILTINS = {"E", "PI", "x", "y", "width", "height", "centre", "center", "uv"}
 INPUTS = {"r1", "g1", "b1", "r2", "g2", "b2", "m1", "m2",
           "front1", "front2", "matte1", "matte2"}
 SWIZZLE = re.compile(r"^[xyzwrgba]{1,4}$")
@@ -31,6 +32,8 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 NUMBER_SUFFIX = re.compile(r"^[0-9]")
 
 EXPR_TAGS = ["RedExpression", "GreenExpression", "BlueExpression", "MatteExpression"]
+# New format (PR245+): four mandatory per-channel local-declaration blocks.
+DECL_TAGS = ["RedDeclarations", "GreenDeclarations", "BlueDeclarations", "MatteDeclarations"]
 
 
 def idents(expr):
@@ -48,22 +51,24 @@ def check(path):
     if state is None:
         return ["no <State>"], []
 
-    # Slot counts
-    for i in range(8):
-        if state.find(f"VariableName{i}") is None:
-            errs.append(f"missing VariableName{i}")
-        if state.find(f"Variable{i}") is None:
-            errs.append(f"missing Variable{i} channel")
+    # Slot counts. Formulas are still 4 fixed slots; expressions/declarations/centre are
+    # mandatory. Variables are now a <Variables> list (0..8 entries), not fixed slots.
     for i in range(4):
         if state.find(f"FormulaName{i}") is None:
             errs.append(f"missing FormulaName{i}")
-    for t in EXPR_TAGS + ["CentreX", "CentreY"]:
+    for t in EXPR_TAGS + DECL_TAGS + ["CentreX", "CentreY"]:
         if state.find(t) is None:
             errs.append(f"missing {t}")
 
-    # Declared names
-    decl_vars = {state.findtext(f"VariableName{i}", "").strip() for i in range(8)}
-    decl_vars.discard("")
+    # Declared variable names — new format: a <Variables> list of <Variable name="..">.
+    # (The <Variables> block is absent entirely when a setup has no variables.)
+    decl_vars = set()
+    vars_el = state.find("Variables")
+    if vars_el is not None:
+        for v in vars_el.findall("Variable"):
+            nm = (v.get("name") or "").strip()
+            if nm:
+                decl_vars.add(nm)
     decl_forms = {state.findtext(f"FormulaName{i}", "").strip() for i in range(4)}
     decl_forms.discard("")
     # A declared name that shadows a built-in (uv, x, y, width, height, centre, E, PI) or
