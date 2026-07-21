@@ -18,10 +18,12 @@ pixel-art / retro-console look without needing a full per-colour palette match (
 blow the 8-variable cap three times over).
 
 ### How it works
-The Rec.709 luma is quantized: `floor(luma * levels) / (levels - 1)` snaps it to `levels`
-evenly-spaced values. That stepped value `q` then drives `_two_color`, so each tone lands
-on a `mix` between colour A (darkest) and colour B (lightest). Pick the two endpoints and
-the intermediate steps fall on the ramp between them.
+The Rec.709 luma is quantized: `min(floor(luma * levels), levels - 1) / (levels - 1)` snaps
+it to `levels` evenly-spaced values spanning 0..1 (the `min` pins full white — and anything
+clipped above it — to the top step instead of overshooting past colour B). That stepped
+value `q` then drives `_two_color`, so each tone lands on a `mix` between colour A (darkest)
+and colour B (lightest). Pick the two endpoints and the intermediate steps fall on the ramp
+between them.
 
 ### Controls
 - `levels` — number of tones (4 = the classic 4-shade console look; 2 = hard duotone).

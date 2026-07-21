@@ -10,6 +10,13 @@
 
 _No variables._
 
+## Node dependencies
+**Pipeline:** display-encoded sRGB → **this node** → linear-only ops → `linear_to_srgb`
+
+Decode half of an **encode/decode pair**: bracket linear-domain maths (exposure, merges, light math) between this and **`linear_to_srgb`**. A convenience when a proper OCIO/colour-management node isn't available — not a replacement for your colour pipeline.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Exact piecewise **sRGB → linear decode**. The node does no colour management itself, so this

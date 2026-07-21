@@ -13,8 +13,8 @@
 ## Notes
 
 **Global hue rotation** — spins every colour around the wheel by a fixed amount; `hue` 0..1 =
-one full turn. Uses a luma-preserving rotation matrix (no HSV decode), so **brightness is
-unchanged**.
+one full turn, positive values rotating red → green → blue. Uses a luma-preserving rotation
+matrix (Rec.709 weights, no HSV decode), so **brightness is unchanged**.
 
 ### Practical notes
 - Affects the **whole image** equally. To rotate only one colour band, use `color_replace`

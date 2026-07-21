@@ -38,7 +38,7 @@ uniform vec2 uv;
 uniform float r1, g1, b1, r2, g2, b2, m1, m2;
 const float E = 2.718281828459045;
 const float PI = 3.141592653589793;
-out vec4 _frag;
+out vec4 _pe_frag;
 """
 
 
@@ -49,7 +49,9 @@ def _parse(path):
         e = root.find(f".//{tag}")
         return (e.text or "") if e is not None else ""
 
-    channels = [txt(f"{c}Expression") for c in ("Red", "Green", "Blue", "Matte")]
+    # strip() so a whitespace-only expression falls back to the same '0.0' path as an
+    # empty one instead of emitting `float _pe_r = \n;` (a confusing false failure).
+    channels = [txt(f"{c}Expression").strip() for c in ("Red", "Green", "Blue", "Matte")]
     # New format (PR245+): variables are a <Variables> list of <Variable name="..">.
     vars_el = root.find(".//Variables")
     variables = []
@@ -71,11 +73,13 @@ def _shader(channels, variables, formulas):
     lines += [f"uniform float {v};" for v in variables]
     lines.append("void main() {")
     lines += [f"    {ty} {nm} = {ex};" for nm, ex, ty in formulas]
-    lines.append(f"    float _r = {red or '0.0'};")
-    lines.append(f"    float _g = {green or '0.0'};")
-    lines.append(f"    float _b = {blue or '0.0'};")
-    lines.append(f"    float _a = {matte or '0.0'};")
-    lines.append("    _frag = vec4(_r, _g, _b, _a);")
+    # harness-private names are _pe_-prefixed so they can't collide with (and silently
+    # shadow / redefine against) a setup's own variable or formula names.
+    lines.append(f"    float _pe_r = {red or '0.0'};")
+    lines.append(f"    float _pe_g = {green or '0.0'};")
+    lines.append(f"    float _pe_b = {blue or '0.0'};")
+    lines.append(f"    float _pe_a = {matte or '0.0'};")
+    lines.append("    _pe_frag = vec4(_pe_r, _pe_g, _pe_b, _pe_a);")
     lines.append("}")
     return "\n".join(lines)
 
@@ -97,7 +101,10 @@ def main():
         print("glslangValidator not found. Install it:  brew install glslang", file=sys.stderr)
         return 2
 
-    paths = sorted(glob.glob(os.path.join(ROOT, "*", "*.pixel_expression_node")))
+    # Recursive, matching validate_setups.py — a setup in a nested subfolder (or at the
+    # setups/ root) must not silently escape the compile gate.
+    paths = sorted(glob.glob(os.path.join(ROOT, "**", "*.pixel_expression_node"),
+                             recursive=True))
     failures = []
     with tempfile.TemporaryDirectory() as td:
         frag = os.path.join(td, "setup.frag")

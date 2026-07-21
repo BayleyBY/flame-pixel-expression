@@ -10,6 +10,13 @@
 
 _No variables._
 
+## Node dependencies
+**Pipeline:** `srgb_to_linear` (or scene-linear source) → linear-only ops → **this node**
+
+Encode half of the pair: re-applies the sRGB curve after working in linear. Keep it matched with **`srgb_to_linear`** so the round-trip is lossless; prefer real colour management when you have it.
+
+See `documentation/node_dependencies.md` for the full wiring guide.
+
 ## Notes
 
 Exact piecewise **linear → sRGB encode** — the re-encode half of the pair. Run it *after*

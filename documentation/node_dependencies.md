@@ -45,11 +45,15 @@ about the Pixel Expression node make these dependencies easy to get wrong:
 | `heat_haze_map` | stmap_generators | — | **STMap** |
 | `chromatic_aberration_map` | stmap_generators | — | **STMap** (per-channel) |
 | `coc_from_depth` | stmap_generators | depth on Matte 1 | **variable-blur / Defocus** |
+| `thin_lens_coc` | stmap_generators | depth on Matte 1 | **variable-blur / Defocus** |
 | `depth_dof_mask` | depth_tools | depth on Matte 1 | **variable-blur / Defocus** |
+| `st_uv_map_inspector` | diagnostics | an **ST/UV map** on Front 1 | — |
 | `depth_normalize` `depth_matte` `depth_contours` `depth_posterize` | depth_tools | **depth pass** on Matte 1 | (matte → comp) |
 | `depth_fog` `depth_fade` `depth_grade` `depth_mix` | depth_tools | **depth pass** on Matte 1 (+ beauty/plates) | — |
-| `pmatte_sphere` `pmatte_rings` `pmatte_rays` `box_matte` | 3d_position_tools | **P-world pass** on Front 1 | (matte → comp) |
-| `normal_relight` `fresnel_facing` | 3d_position_tools | **normal pass** on Front 1 (often a −1..1 remap) | — |
+| `pmatte_sphere` `pmatte_rings` `pmatte_rays` `box_matte` `position_range_remap` | 3d_position_tools | **P-world pass** on Front 1 | (matte → comp) |
+| `normal_relight` `fresnel_facing` `normal_to_facing` | 3d_position_tools | **normal pass** on Front 1 (often a −1..1 remap) | — |
+| `normal_renormalize` | 3d_position_tools | **normal pass** on Front 1 | a relight/normal consumer |
+| `motion_vector_visualize` `motion_vector_normalize` | aov_tools | **motion-vector pass** on Front 1 | (`_normalize` → a warp/retime consumer) |
 | `aov_add` `aov_grade_add` `screen_merge` | aov_tools | **two AOVs / passes** | — |
 | `albedo_divide` `albedo_multiply` | aov_tools | **beauty + albedo** (or albedo + lighting) | — |
 | `ao_multiply` `id_isolate` | aov_tools | **beauty + AO/ID** (AO/ID on Matte 1) | — |
@@ -61,6 +65,7 @@ about the Pixel Expression node make these dependencies easy to get wrong:
 | `dual_output_depth` | control_surfaces | beauty + depth on Matte 1 | (matte → comp) |
 | `hsv_to_rgb` | hsv_color | **HSV-encoded** input (usually from `rgb_to_hsv`) | — |
 | `rgb_to_hsv` | hsv_color | — | a node that reads HSV / `hsv_to_rgb` |
+| `srgb_to_linear` ↔ `linear_to_srgb` | color_grade | (each is the other's inverse) | bracket linear-only ops |
 
 Everything not listed here is self-contained (a plate or matte in, a finished result out).
 
@@ -123,6 +128,9 @@ gather the Pixel Expression node can't do) is where the warp actually happens.
     separately, then recombine. Gives true R/G/B divergence.
   - **Defringe input:** feed the blue (offset magnitude) into a downstream defringe/chroma
     node as its strength map. Simpler, approximate.
+- **`st_uv_map_inspector`** (diagnostics) — the QC *consumer* for this whole class: wire any
+  ST/UV map into its **Front 1** and it shows the UVs, a stretch-revealing checker, and tints
+  out-of-0..1 pixels red (OutMatte = the out-of-bounds mask). Upstream dependency only.
 
 ---
 
@@ -132,7 +140,8 @@ These output a **per-pixel blur radius** (0..1), not a blurred image — the nod
 (no neighbour sampling). A downstream **variable-blur or Defocus** node uses the map as its
 per-pixel blur-amount input to actually soften the plate.
 
-**Setups:** `coc_from_depth` (stmap_generators) · `depth_dof_mask` (depth_tools)
+**Setups:** `coc_from_depth` (stmap_generators) · `thin_lens_coc` (stmap_generators) ·
+`depth_dof_mask` (depth_tools)
 
 ### Wiring
 
@@ -147,6 +156,10 @@ per-pixel blur-amount input to actually soften the plate.
   radius from `focusDepth` / `focusRange` / `maxBlur`. This is an *upstream + downstream*
   setup: it needs the depth pass in, and a defocus node out. Set `focusDepth` to the depth
   value of your focal plane (sample it), `focusRange` to how quickly it falls out of focus.
+- **`thin_lens_coc`** — the **physically-correct** CoC from the thin-lens equation
+  (`focalLen`, `fStop`, `focusDist`, `blurScale`): background and foreground blur
+  asymmetrically and far CoC saturates to a ceiling, unlike `coc_from_depth`'s linear ramp.
+  Same wiring as `coc_from_depth`.
 - **`depth_dof_mask`** — a simpler 0..1 in-focus/out-of-focus **mask** from depth, to drive a
   blur's matte/amount input. Use when you want to art-direct the falloff rather than model a
   physical CoC.
@@ -172,19 +185,29 @@ Cryptomatte) wired to a specific input. Plug in the wrong pass and they fail sil
   needs **two plates** (Front 1, Front 2) to blend by depth.
 
 ### Position (P-world pass → **Front 1**)
-`pmatte_sphere` · `pmatte_rings` · `pmatte_rays` · `box_matte`
+`pmatte_sphere` · `pmatte_rings` · `pmatte_rays` · `box_matte` · `position_range_remap`
 
 - These read a **world-position pass** where RGB encode XYZ. Set the centre/extent variables
   (`cenR/cenG/cenB`, `prad`, etc.) to the world point/size you want to isolate. No P pass =
   no matte. (Test without a render by feeding the `stmap` node into Front 1 — see README.)
 
 ### Normals (normal pass → **Front 1**, usually with an upstream remap)
-`normal_relight` · `fresnel_facing`
+`normal_relight` · `fresnel_facing` · `normal_to_facing` · `normal_renormalize`
 
 - Expect a **−1..1** normal pass. If yours is **0..1 encoded** (common in EXRs), add an upstream
-  remap (`*2-1`) — or do it inline (`vec3(r1,g1,b1)*2.0-1.0`). `fresnel_facing` additionally
-  wants a **camera-space** normal (so `.z` faces the lens); world-space normals need a camera
-  transform this node can't do alone.
+  remap (`*2-1`) — or do it inline (`vec3(r1,g1,b1)*2.0-1.0`). `fresnel_facing` and
+  `normal_to_facing` additionally want a **camera-space** normal (so `.z` faces the lens);
+  world-space normals need a camera transform this node can't do alone.
+- **`normal_renormalize`** is the *repair* stage: it re-unit-lengths a filtered/resized normal
+  pass, so it sits between the pass and a downstream normal consumer (relight etc.).
+
+### Motion vectors (2D velocity pass → **Front 1**)
+`motion_vector_visualize` · `motion_vector_normalize`
+
+- Read a **2D motion-vector pass** (`red` = u, `green` = v screen velocity) from your renderer
+  or a vector-generating analysis upstream. Data pass — keep it **Raw/Data**.
+- `motion_vector_normalize` feeds a downstream **warp/retime consumer** that expects a specific
+  vector range; `motion_vector_visualize` is a terminal inspection view (hue = direction).
 
 ### Beauty / albedo / AO / ID / Cryptomatte (AOV nodes upstream)
 `albedo_divide` · `albedo_multiply` · `ao_multiply` · `aov_add` · `aov_grade_add` ·
@@ -235,9 +258,10 @@ the ones that care:
 - **Light/energy math → scene-linear:** `exposure`, `white_balance`, `aov_add`,
   `aov_grade_add`, `albedo_multiply`, `screen_merge`, `normal_relight` (output), etc. Feed them
   linear; if you're in log/display, convert upstream.
-- **Display looks → display-referred:** `color_blindness` (the Machado matrices are fit for
-  sRGB display), and the `stylization/` looks generally read best on a display-referred/working
-  image. Apply a view transform upstream.
+- **Display looks → display-referred:** the `stylization/` looks generally read best on a
+  display-referred/working image — apply a view transform upstream. (`color_blindness` is a
+  special case: the Machado matrices are **derived in linear RGB**; running them on
+  display-encoded sRGB is the common QC approximation — see its `.md`.)
 - **Pure data → no management:** all ST/UV maps, depth, P, normals, Cryptomatte, `coc_from_depth`.
   **Tag Raw/Data and keep them out of the colour pipeline** both up- and downstream.
 - **Contrast/pivot tools** (`contrast`) assume a pivot (0.18 in linear, ~0.5 in display) — set

@@ -8,7 +8,7 @@
 
 **Expects:** depth raw on Matte 1; beauty in your working/scene-linear space
 
-**Variables:** `near` (0.0), `far` (1.0), `strength` (0.0), `tintR` (0.6), `tintG` (0.8), `tintB` (1.4)
+**Variables:** `near` (0.0), `far` (1.0), `strength` (1.0), `tintR` (0.6), `tintG` (0.8), `tintB` (1.4)
 
 ## Node dependencies
 **Pipeline:** beauty (Front 1) + depth pass (Matte 1) → **this node** → (matte to comp)
@@ -26,7 +26,8 @@ matte.
 
 ### The two outputs
 - **RGB:** the beauty (Front 1) blended toward a tint (`tintR/G/B`) by depth, strength
-  `strength`. Default `strength = 0.0` leaves the beauty untouched, so the look is opt-in.
+  `strength`. Default `strength = 1.0` shows the cool depth tint on load; set it to 0 to
+  pass the beauty through untouched.
 - **Matte:** `smoothstep(near, far, m1)` — a soft 0..1 isolation of the depth range between
   `near` and `far`. This is computed **independently** of the RGB grade.
 

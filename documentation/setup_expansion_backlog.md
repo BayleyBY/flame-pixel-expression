@@ -1,6 +1,6 @@
 # Setup expansion backlog
 
-Curated ideas for new Pixel Expression setups, beyond the current 112. Every item is
+Curated ideas for new Pixel Expression setups, beyond the current 156. Every item is
 **strictly current-pixel** (no neighbour gather), fits **8 scalars + 4 vec formulas**, and is
 **not** a duplicate of an existing setup. Graded by value-vs-effort into tiers. "Gap" = the hole
 in the current library it fills.

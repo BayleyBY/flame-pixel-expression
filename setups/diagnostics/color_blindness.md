@@ -6,7 +6,7 @@
 
 **Inputs:** Front 1 (+ Matte 1 to pass alpha)
 
-**Expects:** display-referred sRGB-ish (the Machado 2009 matrices are fit for sRGB display values)
+**Expects:** linear RGB by the paper (Machado 2009); display-encoded sRGB works as the common QC approximation
 
 **Variables:** `type` (0), `amount` (1.0)
 
@@ -33,6 +33,8 @@ arrays or branches — and each output channel is a single `dot()` against `w`.
 - `amount` 0..1 blends original→full simulation (handy for an A/B nudge).
 
 ### Practical notes
-- **Feed display-referred, sRGB-ish values.** The matrices are fit in sRGB display space; on
-  scene-linear footage add a view transform / `linear_to_srgb` before this node.
+- **Colour space:** the Machado matrices are **derived in linear RGB**. Many tools (Chrome
+  DevTools included) apply them straight to display-encoded sRGB as an approximation — that's
+  acceptable for QC, but for the by-the-paper result run them on linear values (on graded
+  display footage, an `srgb_to_linear` → this node → `linear_to_srgb` sandwich).
 - Matte just passes **Matte 1** through; connect it if you need the alpha preserved.

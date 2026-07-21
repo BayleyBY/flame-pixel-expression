@@ -7,23 +7,29 @@ A library of **Autodesk Flame "Pixel Expression" node setups** (`.pixel_expressi
 files) that translate the best Foundry Nuke expression-node examples into Flame's GLSL.
 The Pixel Expression node (Flame 2027.1+) applies per-pixel GLSL to a clip's channels.
 
+This repo is **local-only by design** — git has no remote. Never add one, push, or publish it.
+
 ## Commands
 Generator + validator are pure-stdlib Python 3 — no deps, no venv, no install step.
 - `python3 tools/generate_setups.py` — regenerate all 156 `.pixel_expression_node` files +
   companion `.md` docs from the generator. Run after any edit to `tools/generate_setups.py`.
 - `python3 tools/validate_setups.py` — static-check every generated setup. Must be **0
-  errors** (errors on reserved-name collisions; warns on unused/undefined identifiers,
-  unbalanced parens, bad slot counts). Run after every regenerate.
+  errors** (ERRORS: reserved-name collisions, undefined identifiers, unbalanced/mis-nested
+  parens, missing/invalid slots, empty expressions, >8 variables, duplicate names, GLSL
+  keywords as names, forward formula references; warns on unused vars/formulas and
+  GLSL-function-name shadowing). Exits non-zero on errors, so it gates in scripts. Run
+  after every regenerate.
 - `python3 tools/glsl_compile_check.py` — **optional pre-Flame gate**: compiles each setup's
-  GLSL with `glslangValidator` (needs `brew install glslang`) to catch real compile errors the
-  static checker can't. Calibrated against the Flame-verified setups (they all pass), so a clean
+  GLSL with `glslangValidator` (needs `brew install glslang`; `-v` prints per-file compiler
+  output) to catch real compile errors the static checker can't. Calibrated against the Flame-verified setups (they all pass), so a clean
   run is strong evidence a new setup will compile in Flame — but it's a proxy, not a substitute
   for a real in-Flame load (can't prove Flame's exact dialect/length limits or visual output).
 - `/sync-docs` — project command: does regenerate + validate + drift-check and syncs the
   counts and Live-Flame status across CLAUDE.md and README. Prefer this for routine edits.
 
 There is no unit-test suite or build beyond the above — `validate_setups.py` (static) and
-`glsl_compile_check.py` (compile) are the tests.
+`glsl_compile_check.py` (compile) are the tests. All three tools run over the **whole library**
+each time (no single-setup flag) — a full run takes seconds, so there's nothing to scope down.
 
 ## ⚠️ Node format changed (PR245, 2026-07-07) — library regenerated, eval reset
 A Pixel Expression node update **changed the save-file XML structure**, so every old-format setup
@@ -33,9 +39,12 @@ to the new format**. See "File format facts" and "Live-Flame status" below for t
 - **Regeneration is safe again.** The old `approved/`/`rejected/` subfolders were flattened (the
   16 old-format approvals no longer load in the updated node), so the layout is flat again and
   `tools/generate_setups.py` writes the single source of truth with no duplication risk.
-- **The Live-Flame eval restarts from 0/156** against the updated node. Because only the *file
-  wrapper* changed (the GLSL/expressions are untouched), re-verification should be fast — the 16
-  previously-approved setups in particular. Tracker: `documentation/live_flame_eval_progress.md`.
+- **The Live-Flame eval reset to 0/156** against the updated node on 2026-07-07 and is now well
+  underway (~96/156, Phases 1 & 2 complete; a 2026-07-21 semantic bug-fix pass changed 17
+  setups' GLSL and revoked 15 previous passes — see the tracker). Because only the *file
+  wrapper* changed in PR245 (GLSL untouched), re-verification has been fast — whole folders
+  pass in a batch. Tracker (source of truth for the live count):
+  `documentation/live_flame_eval_progress.md`.
 
 ## Golden rule: never hand-edit the setup files
 `tools/generate_setups.py` is the **single source of truth**. All 156 `.pixel_expression_node`
@@ -45,9 +54,9 @@ files and their companion `.md` docs are generated from it.
   `NOTES` entry — long-form Markdown appended to the setup's `.md` under a `## Notes`
   heading (workflow, recipes, gotchas); all 156 setups currently have one.
 - Regenerate: `python3 tools/generate_setups.py`
-- Validate: `python3 tools/validate_setups.py` (must be **0 errors**; errors on reserved-name
-  collisions — any var/formula shadowing a built-in/input; warns on unused vars / undefined
-  identifiers / unbalanced parens / bad slot counts).
+- Validate: `python3 tools/validate_setups.py` (must be **0 errors**; reserved-name
+  collisions — any var/formula shadowing a built-in/input — plus undefined identifiers,
+  paren problems and slot issues are all ERRORS; unused vars/formulas are warnings).
 - Or just run `/sync-docs` — the project command that does regenerate + validate + drift
   check and syncs the counts and Live-Flame status across CLAUDE.md and README.
 - The `.pixel_expression_node` files are XML; editing them by hand will drift from the
@@ -64,8 +73,10 @@ files and their companion `.md` docs are generated from it.
 - `setups/` — the 156 generated `.pixel_expression_node` files + companion `.md` docs, in 19
   category subfolders (the loadable library).
 - `documentation/pixelexpression1.pixel_expression_node` — a real Flame-saved file kept as a
-  worked example of the serialization (the one the format doc was reverse-engineered from; do
-  NOT delete). Its `.p` proxy thumbnail is gitignored — Flame regenerates it on load.
+  worked example of the **old pre-PR245** serialization (the original format doc was
+  reverse-engineered from it; it no longer loads in the updated node — the current-format
+  reference saves live in `PR245/`. Do NOT delete either). Its `.p` proxy thumbnail is
+  gitignored — Flame regenerates it on load.
 - `documentation/flame_pixel_expression_file_format.md` — reverse-engineered file format.
 - `documentation/flame_pixel_expression_translations.md` — Nuke→Flame GLSL mapping.
 - `documentation/node_dependencies.md` — every setup that needs an upstream pass or a
@@ -74,7 +85,8 @@ files and their companion `.md` docs are generated from it.
 - `documentation/setup_expansion_backlog.md` — the tiered expansion backlog (idea list with
   formulas/inputs/gaps, ☐/☑ status). Tiers 1–4 are all built (the 2026-06-25 expansion); the
   only open items are the **Deferred / flagged** section (Apollonian fractal, single-pass
-  domain-warp, CA-fringe overlay — each constraint-risky or redundant). Add new ideas here.
+  domain-warp, CA-fringe overlay — each constraint-risky or redundant) plus the
+  `digital_counter` alphanumeric idea captured during the eval. Add new ideas here.
 - `documentation/nuke_expressions_cheatsheet.md` — source Nuke reference.
 - `documentation/flame_feature_showcase_setup.md` — recipe for a hand-built setup that
   exercises every node feature (front blend, vignette, sat/gamma, ring×ray matte).
@@ -131,7 +143,8 @@ files and their companion `.md` docs are generated from it.
   **Expects:** line (scene-linear / raw-data / any / conversion). Light math = linear;
   P/normal/depth/crypto = raw; ST-map output = data. See README "Colour management".
 - **Two-colour patterns:** every tonal generator in `pattern_generators/` and
-  `animated_generators/` (all except `noise_random`) blends `mix(A, B, pattern)` per
+  `animated_generators/` (all except `noise_random`, `starfield` and `log_polar_spiral`,
+  whose variable budgets are spent on their own controls) blends `mix(A, B, pattern)` per
   channel via the `_two_color()` helper + shared `_COLVARS` (`aR/aG/aB`→`bR/bG/bB`,
   default black→white so the look is unchanged). Matte keeps the raw 0..1 pattern.
 - **SDF shapes:** `_HOLLOW(extent)` adds a `hollow` 0..1 cut-out (0=solid). Exception:
@@ -142,7 +155,7 @@ files and their companion `.md` docs are generated from it.
   drift/evolve) plus shaping vars (`gain`, `lacunarity`/`persistence`, `jitter`).
 - **Node dependencies:** some setups are only one stage of a Batch graph — ST-map generators
   (`uv_distortion/`, `stmap_generators/`, `utility/stmap`) emit a UV map for a downstream
-  **STMap**; `coc_from_depth`/`depth_dof_mask` feed a **variable-blur/Defocus**; depth / P /
+  **STMap**; `coc_from_depth`/`thin_lens_coc`/`depth_dof_mask` feed a **variable-blur/Defocus**; depth / P /
   normal / AOV / crypto tools need a specific pass wired **upstream**; `channel_pack`↔
   `channel_unpack` and `rgb_to_hsv`↔`hsv_to_rgb` are pairs. These are recorded in the `DEPENDS`
   table (renders a **## Node dependencies** section into each `.md`) and explained in full in
@@ -178,7 +191,7 @@ section. `stylization/` setups are collected in a `_STYLIZATION` list appended t
 - `stmap_generators` — these OUTPUT a map (UV coords or a scalar) to be consumed by a
   **downstream node**; there is no neighbour sampling, so the gather happens elsewhere. Each
   `.md` "Notes" states the required downstream node (STMap for the UV maps; a variable-blur /
-  Defocus for `coc_from_depth`).
+  Defocus for `coc_from_depth`/`thin_lens_coc`).
 - `control_surfaces` — Front 2 / Matte 2 used as a painted control surface (spatially-varying
   parameters) and the node's two-outputs-at-once trick (`dual_output_depth`).
 - `stylization` `optics_physics` `diagnostics` — per-pixel looks, analytic physics generators,
@@ -196,10 +209,12 @@ the library — so if you edit one, they're the most likely to need a fresh live
   new format** and now need a fresh in-Flame load pass. Good news: only the *file wrapper* changed
   (GLSL/expressions untouched), so most should re-verify quickly.
 - **Confirmed in the updated node so far:** see `documentation/live_flame_eval_progress.md` for the
-  live count (Phase 1 — the 16 highest-risk — is complete; the whole `noise/` folder + `radial_ramp`
-  + the new `metaball_ring` are also confirmed). The new format is proven correct, including animated
+  live count (**Phases 1 & 2 are complete** — all 16 highest-risk plus the unconventional/experimental
+  folders — and the lower-risk basics are being batch-confirmed folder-by-folder; ~96/156 confirmed:
+  111 as of the last session minus 15 passes revoked by the 2026-07-21 bug-fix pass. Resume at
+  `aov_tools/`, then re-verify the revoked list). The new format is proven correct, including animated
   channels (`thin_film`/`metaball_ring`). Everything not yet ticked is **new-format, in-Flame
-  confirmation pending**.
+  confirmation pending** — the tracker doc is the source of truth for the exact count.
 - **All 156 pass the offline checkers** (both recalibrated for the new format):
   `tools/validate_setups.py` → 0 errors/0 warnings, and `tools/glsl_compile_check.py`
   (`glslangValidator`, `#version 410 core`) → 156 compile. A clean compile is strong evidence a

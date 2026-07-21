@@ -21,10 +21,12 @@ Tooling (in `tools/`):
 **Live-Flame status:** a **Pixel Expression node update (PR245, 2026-07-07) changed the save-file
 format**, so all setups were regenerated to the new format and the in-Flame verification was
 **reset** — prior approvals were against the old format and no longer load. All 156 pass the
-validator and the offline GLSL compile-check; a fresh in-Flame load pass is underway (Phase 1, the
-16 highest-risk setups, plus the whole `noise/` folder and `metaball_ring`, are confirmed in the
-updated node). Because only the file *wrapper* changed — the GLSL is untouched — re-verification is
-going quickly. Live count + queue: `documentation/live_flame_eval_progress.md`.
+validator and the offline GLSL compile-check; a fresh in-Flame load pass is underway (**Phases 1 & 2
+complete** — all 16 highest-risk setups plus the unconventional/experimental folders — with the
+lower-risk basics being batch-confirmed folder-by-folder; ~96/156 confirmed: 111 as of the last
+session minus 15 passes revoked by a 2026-07-21 semantic bug-fix pass that changed 17 setups'
+GLSL — resume at `aov_tools/`, then re-verify the revoked list). Live count + queue:
+`documentation/live_flame_eval_progress.md`.
 
 Every setup also has a companion `<name>.md` next to it with **What it does / Use case /
 Inputs / Expects (colour space) / Variables** — generated from the same script, so the
@@ -45,18 +47,19 @@ setups/
   3d_position_tools/    depth_tools/          aov_tools/             uv_distortion/
   noise/                sdf_shapes/           hsv_color/             matte_combine/
   utility/
-  # unconventional / experimental (not yet Flame-verified):
+  # unconventional / experimental:
   fractals/             stmap_generators/     control_surfaces/      stylization/
   optics_physics/       diagnostics/
-tools/         generate_setups.py  validate_setups.py
+tools/         generate_setups.py  validate_setups.py  glsl_compile_check.py
 documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
-               pixelexpression1.pixel_expression_node (worked save-format example)
+               pixelexpression1.pixel_expression_node (OLD pre-PR245 format example;
+               current-format reference saves are in PR245/)
 ```
 
 ### `alpha_matte_tools/`
 | File | Nuke origin | Inputs needed | Variables (defaults) |
 |------|-------------|---------------|----------------------|
-| `alpha_crunch` | crunch alpha | Matte 1 | `thresh` 1.0 |
+| `alpha_crunch` | crunch alpha | Matte 1 | `thresh` 0.1 |
 | `fill_alpha` | fill alpha (>0 → 1) | Matte 1 | — |
 | `alpha_fringe` | isolate matte edges | Matte 1 | — |
 | `luma_key` | soft luminance key (Result + OutMatte) | Front 1 | `lo` 0.3, `hi` 0.7 |
@@ -237,8 +240,8 @@ drift/evolve** the noise over time (they're no longer fixed frames).
 | `voronoi_chebyshev` | square cells (chessboard metric) | none | `scale` 80, `seed` 0, `jitter` 1.0 |
 
 ### `sdf_shapes/`
-Anti-aliased shape mattes around Centre (size in px, `soft` = edge width). Centre starts
-at 0,0 — use **Show Icon** to position.
+Anti-aliased shape mattes around Centre (size in px, `soft` = edge width). Centre defaults
+to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
 
 | File | Use | Inputs needed | Variables (defaults) |
 |------|-----|---------------|----------------------|
@@ -290,19 +293,19 @@ at 0,0 — use **Show Icon** to position.
 | `uv_test_chart` | UV/lens calibration chart (ramp + grid + crosshair) | none (generator) | `gridN` 10, `lineW` 0.002 |
 
 ## Unconventional / experimental setups
-The six categories below push Pixel Expression past the usual Nuke-derived toolkit: per-pixel **fractals**, **map-generators** that feed a downstream node, painted **control surfaces**, **stylization**, analytic **optics/physics**, and in-comp **diagnostics**. **These setups pass `validate_setups.py` (0 errors) and an offline GLSL compile-check, but are not yet load-confirmed in Flame** — load-test before trusting (see the Live-Flame note at the top). The 2026-06-25 expansion (incl. `thin_lens_coc` below and the new `diagnostics/` tools) is in the same compile-checked-pending state.
+The six categories below push Pixel Expression past the usual Nuke-derived toolkit: per-pixel **fractals**, **map-generators** that feed a downstream node, painted **control surfaces**, **stylization**, analytic **optics/physics**, and in-comp **diagnostics**. These folders were **load-confirmed in Flame in Phase 2 of the eval** (2026-07-07) — though a handful of individual setups were since revoked for re-verification by the 2026-07-21 bug-fix pass (see the Live-Flame note at the top and the tracker for the exact list).
 
 ### `fractals/`
 Escape-time fractals — **architecture-limited to 8 iterations** (shallow; texture, not deep-zoom).
 
 | File | What it does | Inputs needed | Variables (defaults) |
 |------|--------------|---------------|----------------------|
-| `burning_ship` | Burning Ship fractal (abs-folded squaring) | none | `zoom` (400.0), + colours |
-| `julia` | Escape-time Julia set | none | `zoom` (400.0), `cRe` (-0.8), `cIm` (0.156) |
-| `mandelbrot` | Escape-time Mandelbrot set | none | `zoom` (400.0), + colours |
+| `burning_ship` | Burning Ship fractal (abs-folded squaring) | none | `zoom` (400.0), `cRe` (0.0), `cIm` (0.0), `gain` (1.0), `gamma` (1.0) |
+| `julia` | Escape-time Julia set | none | `zoom` (400.0), `cRe` (-0.8), `cIm` (0.156), `gain` (1.0), `gamma` (1.0) |
+| `mandelbrot` | Escape-time Mandelbrot set | none | `zoom` (400.0), `cRe` (0.0), `cIm` (0.0), `gain` (1.0), `gamma` (1.0) |
 
 ### `stmap_generators/`
-Each OUTPUTS a map for a **downstream node** (STMap, or a variable-blur/Defocus for `coc_from_depth`) — see each `.md` Notes.
+Each OUTPUTS a map for a **downstream node** (STMap, or a variable-blur/Defocus for `coc_from_depth`/`thin_lens_coc`) — see each `.md` Notes.
 
 | File | What it does | Inputs needed | Variables (defaults) |
 |------|--------------|---------------|----------------------|
@@ -322,7 +325,7 @@ Front 2 / Matte 2 as a painted control surface; plus the two-outputs-at-once tri
 |------|--------------|---------------|----------------------|
 | `channel_pack` | Packs three single-channel signals into one RGB | Matte 1 + Matte 2 + Front 1 | — |
 | `channel_unpack` | Passes a packed RGB (from channel_pack) through unchanged and routes one channel to the Matte | Front 1 (the packed RGB) | `pick` (0) |
-| `dual_output_depth` | ONE node, TWO products | Front 1 (beauty) + Matte 1 (depth) | `near` (0.0), `far` (1.0), `strength` (0.0), `tintR` (0.6), `tintG` (0.8), `tintB` (1.4) |
+| `dual_output_depth` | ONE node, TWO products | Front 1 (beauty) + Matte 1 (depth) | `near` (0.0), `far` (1.0), `strength` (1.0), `tintR` (0.6), `tintG` (0.8), `tintB` (1.4) |
 | `painted_grade` | Grades Front 1 using a PAINTED Front 2 control map | Front 1 (image) + Front 2 (control map); Matte 1 optional (passes through) | `expRange` (2.0), `hueRange` (1.0), `satRange` (1.0) |
 
 ### `stylization/`
@@ -383,9 +386,9 @@ pivot ~0.5 instead of 0.18.
 
 ## Notes
 - **Centre-based setups** (`radial_ramp`, `rings`, `rays`, `pulse_rings`, `spin_rays`)
-  use `centre.x` / `centre.y`. Setups load with **Centre at 0,0** (bottom-left corner)
-  and **no keyframe** — turn on **Show Icon** and drag the on-screen manipulator to
-  position the effect.
+  use `centre.x` / `centre.y`. Setups load with Centre at its default — the **image
+  middle** since PR245 — and **no keyframe**; turn on **Show Icon** and drag the
+  on-screen manipulator to reposition the effect.
 - **`rings`/small values**: `freq` lives in the 0–1 range — use **Space + Drag** for
   hundredths, or it'll jump in tenths.
 - **`nan_cleanup`**: replaces bad pixels with `0.0`. To patch from a clean plate

@@ -8,17 +8,18 @@
 
 **Expects:** any (data / value op)
 
-**Variables:** `thresh` (1.0)
+**Variables:** `thresh` (0.1)
 
 ## Notes
 
 A **hard floor on the matte**: any alpha below `thresh` drops to 0; the rest keeps its value.
 RGB passes through untouched (it only rewrites alpha).
 
-### The default keeps only solids
-With `thresh` 1.0, *everything below fully-opaque* goes to 0 — so only pixels that were
-exactly 1.0 survive. That's a "core / solids only" crunch: it strips semi-transparent edges,
-spill, and soft fringe. **Lower `thresh`** to keep more of the partial alpha.
+### The default crushes the noise floor
+With `thresh` 0.1, faint low-level alpha (grain lift, compression haze, stray speckle) drops
+to 0 while real edges and solids pass through. **Raise `thresh`** to bite deeper — all the
+way to 1.0 for a "core / solids only" crunch that keeps just the fully-opaque pixels and
+strips every semi-transparent edge.
 
 ### Practical notes
 - Matte on **Matte 1**. Use before a hard composite to kill a noisy/feathered edge, or to

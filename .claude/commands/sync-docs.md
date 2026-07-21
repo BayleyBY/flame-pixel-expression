@@ -22,11 +22,12 @@ are outputs.
    `WARNING: missing DOCS/EXPECTS entries` lines — if any appear, add the missing
    `DOCS`/`EXPECTS` (and `CATEGORY`) entries for those setups and re-run.
 
-3. **Validate:** run `python3 tools/validate_setups.py`. It MUST report **0 errors**. Resolve
-   every error before continuing (warnings: judge case-by-case — unused vars / undefined
-   identifiers are usually real bugs). Remember the validator now flags any variable/formula
-   that shadows a built-in (`uv x y width height centre E PI`) or input (`r1`…); that class
-   is a silent no-load in Flame, so treat it as a hard error.
+3. **Validate:** run `python3 tools/validate_setups.py`. It MUST report **0 errors** (it also
+   exits non-zero on any error, so the run itself gates). Undefined identifiers, paren
+   problems, slot issues, >8 variables, and any variable/formula shadowing a built-in
+   (`uv x y width height centre E PI`) or input (`r1`…) are all ERRORS — the shadowing class
+   is a silent no-load in Flame. Warnings (unused vars/formulas, GLSL-function-name
+   shadowing): judge case-by-case — they're usually leftovers or real typos.
 
 4. **Drift check.** Diff the regenerated `.pixel_expression_node` files against the snapshot.
    Report any files that changed. If a change was meant to be a pure refactor (identical

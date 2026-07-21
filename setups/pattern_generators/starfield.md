@@ -17,9 +17,14 @@ cell is hashed once (`_hash2`) and may hold a single star. Because the hash is d
 cell, the field is stable when you scrub (only the twinkle moves).
 
 ### How it works
-- `h = _hash2(floor(pixel / cellSize))` — a per-cell random vec2. `h.y` gates whether the cell
-  has a star (`smoothstep(threshold, 1.0, h.y)` — raise `threshold` for fewer, brighter stars);
-  `h.x` seeds its twinkle phase and a faint warm/cool tint.
+- `h = _hash2(floor(pixel / cellSize))` — a per-cell random vec2 that sets the star's
+  **position** within its cell (inset from the borders so a star's disc never crosses into a
+  neighbouring cell and gets clipped); `h.x` also seeds its twinkle phase and a faint
+  warm/cool tint.
+- A second, **independent** per-cell hash `g` gates whether the cell has a star
+  (`smoothstep(threshold, 1.0, g)` — raise `threshold` for fewer, brighter stars). Keeping the
+  gate separate from the position hash matters: gating on `h.y` would mean every visible star
+  sits at the top of its cell (rows of clipped discs).
 - `d` is the distance from the pixel to the star's sub-cell position; a `smoothstep` makes a
   small round dot.
 

@@ -5,8 +5,9 @@ Reverse-engineered from a real Flame 2027.1 save. Each setup is single-line XML:
   <Setup><Base>..metadata..</Base><State>..expressions/vars/formulas..</State></Setup>
 
 Slots are fixed by the UI: 8 custom variables, 4 custom formulas. Unused slots are
-emitted empty. Static values (incl. Centre, default 0,0) are written with NO keyframes;
-only (frame, value) lists produce animation keys.
+emitted empty. Static values are written with NO keyframes; only (frame, value) lists
+produce animation keys. Centre default (0,0) is an OFFSET from the image middle (PR245:
+the runtime centre.x/centre.y built-ins inject as middle + offset, so 0,0 = centred).
 FormulaType: 0=float, 1=vec2, 2=vec3, 3=vec4.
 """
 import os
@@ -55,8 +56,14 @@ def channel(path, value):
 def build(name, red, green, blue, matte,
           variables=None, formulas=None, centre=(0, 0), category=""):
     """variables: list of (name, value), up to 8. formulas: list of (name, expr, type), up to 4."""
-    variables = (variables or [])[:8]
-    formulas = (formulas or [])[:4]
+    variables = variables or []
+    formulas = formulas or []
+    # Hard limits (UI slots). Fail loudly — silently truncating would emit a setup whose
+    # expressions reference variables/formulas that no longer exist.
+    if len(variables) > 8:
+        raise ValueError(f"{name}: {len(variables)} variables (max 8)")
+    if len(formulas) > 4:
+        raise ValueError(f"{name}: {len(formulas)} formulas (max 4)")
 
     # Formulas remain 4 fixed slots (emitted empty when unused). Variables are NO
     # longer padded to 8 fixed slots — the new format lists only the defined ones.
@@ -266,9 +273,18 @@ _SAT = "(q.x - min(q.w, q.y)) / (q.x + 0.0001)"
 _LUMA = "dot(vec3(r1, g1, b1), vec3(0.2126, 0.7152, 0.0722))"
 
 # Luma-preserving hue-rotation matrix rows (rotate by formulas c=cos(theta), s=sin(theta)).
-_HROT_R = "r1 * (0.299 + 0.701 * c + 0.168 * s) + g1 * (0.587 - 0.587 * c + 0.330 * s) + b1 * (0.114 - 0.114 * c - 0.497 * s)"
-_HROT_G = "r1 * (0.299 - 0.299 * c - 0.328 * s) + g1 * (0.587 + 0.413 * c + 0.035 * s) + b1 * (0.114 - 0.114 * c + 0.292 * s)"
-_HROT_B = "r1 * (0.299 - 0.300 * c + 1.250 * s) + g1 * (0.587 - 0.588 * c - 1.050 * s) + b1 * (0.114 + 0.886 * c - 0.203 * s)"
+# W3C feColorMatrix hueRotate coefficients: Rec.709 luma weights (matching _LUMA), exact
+# identity at theta=0, and POSITIVE theta rotates R->G->B (increasing hue in our 0..1 hue
+# convention) — the previous rows were Rec.601-weighted and rotated the opposite direction.
+def _hrot_rows(rv, gv, bv):
+    return (
+        f"{rv} * (0.213 + 0.787 * c - 0.213 * s) + {gv} * (0.715 - 0.715 * c - 0.715 * s) + {bv} * (0.072 - 0.072 * c + 0.928 * s)",
+        f"{rv} * (0.213 - 0.213 * c + 0.143 * s) + {gv} * (0.715 + 0.285 * c + 0.140 * s) + {bv} * (0.072 - 0.072 * c - 0.283 * s)",
+        f"{rv} * (0.213 - 0.213 * c - 0.787 * s) + {gv} * (0.715 - 0.715 * c + 0.715 * s) + {bv} * (0.072 + 0.928 * c + 0.072 * s)",
+    )
+
+
+_HROT_R, _HROT_G, _HROT_B = _hrot_rows("r1", "g1", "b1")
 
 
 def _hue_band(hue_expr, center, halfwidth, soft):
@@ -354,11 +370,18 @@ def _fractal_chain(start, c, abs_z=False):
 
 
 # Smooth 0..1 escape value from the final formula's accumulator (z3.z), normalised by the
-# total iteration count. 0 = never escaped (interior), 1 = escaped immediately (far outside).
+# total iteration count. 1 = never escaped (interior), 0 = escaped immediately (far outside).
 _FRAC_RAW = f"clamp(z3.z / {float(_FRAC_TOTAL)}, 0.0, 1.0)"
+# Mandelbrot/burning-ship variant: their z0 (default 0,0) is always inside the bailout, so
+# the accumulator's first add is guaranteed — every pixel lands in 1..count and the raw /count
+# value has a 1/count grey floor (far exterior reads 12.5% grey, never black). Discounting
+# that free first iteration renormalises far-exterior to 0.0, interior still to 1.0.
+# (Julia is unaffected: its z0 is the pixel, so far pixels genuinely start escaped.)
+_FRAC_RAW1 = f"clamp((z3.z - 1.0) / {float(_FRAC_TOTAL - 1)}, 0.0, 1.0)"
 # Shaped output: `gamma` curves the bands (contrast; >1 darkens mids, <1 lifts them), then
 # `gain` scales brightness. Both default 1.0 per setup, so the default look is the raw value.
 _FRAC_ESCAPE = f"clamp(pow({_FRAC_RAW}, gamma) * gain, 0.0, 1.0)"
+_FRAC_ESCAPE1 = f"clamp(pow({_FRAC_RAW1}, gamma) * gain, 0.0, 1.0)"
 
 
 # --- Stylization helpers -----------------------------------------------------
@@ -411,14 +434,16 @@ def _seven_seg_expr():
 
 # Per-pixel stylizations of Front 1 (no neighbour gather). Appended to SETUPS below.
 _STYLIZATION = [
-    # Halftone dots — rotate coords by `angle`, tile into `cell`-px cells, draw a dot
-    # whose radius tracks the cell luma. Formula `lp` = rotated coords; `dot` = cell-local
-    # distance-to-centre minus the luma-driven radius. Two-colour (paper -> ink).
+    # Halftone dots — rotate coords by `angle`, tile into `cell`-px cells, draw an INK dot
+    # whose radius tracks the cell darkness (sqrt(1-luma): dark = big ink dots, print-style
+    # tone-matching). Formula `lp` = rotated coords; `ink` = cell-local distance-to-centre
+    # minus the darkness-driven radius (named `ink`, not `dot` — that would shadow GLSL's
+    # dot()). Two-colour: A = ink (pattern 0), B = paper.
     dict(name="halftone",
-         **_two_color("smoothstep(-1.5, 1.5, dot)"),
+         **_two_color("smoothstep(-1.5, 1.5, ink)"),
          variables=[("cell", 12), ("angle", 0.4)] + _COLVARS,
          formulas=[("lp", "vec2(cos(angle) * (x - centre.x) - sin(angle) * (y - centre.y), sin(angle) * (x - centre.x) + cos(angle) * (y - centre.y))", 1),
-                   ("dot", f"length(mod(lp, cell) - cell * 0.5) - cell * 0.5 * sqrt({_LUMA01})", 0)]),
+                   ("ink", f"length(mod(lp, cell) - cell * 0.5) - cell * 0.5 * sqrt(1.0 - {_LUMA01})", 0)]),
 
     # Ordered 4x4 Bayer dithering — `bv` is the dispersed threshold (0..1) built by index
     # math (NO loop): interleave the low 2 bits of int(x),int(y). Luma is posterized to
@@ -432,9 +457,10 @@ _STYLIZATION = [
 
     # Pen crosshatch — 4 line sets (0/45/90/135 deg) switch on as luma drops through 4 even
     # thresholds (darker = more directions = denser shading). `hatch` = product of the
-    # active line masks (1=paper); output ink-on-paper. `spacing` px, `lineW` 0..1 weight.
+    # active line masks (1=paper, 0=ink), fed straight to _two_color so A = ink (default
+    # black) and B = paper (default white). `spacing` px, `lineW` 0..1 weight.
     dict(name="crosshatch",
-         **_two_color("1.0 - hatch"),
+         **_two_color("hatch"),
          variables=[("spacing", 8), ("lineW", 0.5)] + _COLVARS,
          formulas=[("lum", _LUMA01, 0),
                    ("hatch",
@@ -479,7 +505,7 @@ _STYLIZATION = [
     dict(name="palette_quantize",
          red="mix(aR, bR, q)", green="mix(aG, bG, q)", blue="mix(aB, bB, q)", matte="q",
          variables=[("levels", 4.0)] + _COLVARS,
-         formulas=[("q", f"floor({_LUMA01} * levels) / max(levels - 1.0, 1.0)", 0)]),
+         formulas=[("q", f"min(floor({_LUMA01} * levels), levels - 1.0) / max(levels - 1.0, 1.0)", 0)]),
 
     # Seven-segment digit — one SDF 7-segment digit burned into the frame with NO text node.
     # `digit` 0..9 (KEYFRAME it for a frame counter) lights bars via an arithmetic truth
@@ -501,9 +527,10 @@ SETUPS = [
          blue="0.0", matte="1.0"),
 
     # Radial ramp / vignette — white centre to black at 'radius'.
-    # 'softness' 0..1: 0 = hard circle, 1 = full smooth falloff from centre.
+    # 'softness' 0..1: 0 = hard circle, 1 = full smooth falloff from centre. The half-pixel
+    # inset keeps smoothstep's edges distinct at softness=0 (edge0==edge1 is GLSL-undefined).
     dict(name="radial_ramp",
-         **_two_color("1.0 - smoothstep(radius * (1.0 - softness), radius, dist)"),
+         **_two_color("1.0 - smoothstep(radius * (1.0 - softness) - 0.5, radius, dist)"),
          variables=[("radius", 600), ("softness", 1.0)] + _COLVARS, formulas=[DIST]),
 
     # Concentric rings — 'freq' controls spacing (use Space+Drag for hundredths).
@@ -539,11 +566,12 @@ SETUPS = [
          blue="isnan(b1) || isinf(b1) ? 0.0 : b1",
          matte="m1"),
 
-    # Alpha crunch — matte below 'thresh' -> 0 (RGB passthrough).
+    # Alpha crunch — matte below 'thresh' -> 0 (RGB passthrough). Default 0.1 crushes just
+    # the low-level noise floor (1.0 would zero everything below full-solid on load).
     dict(name="alpha_crunch",
          red="r1", green="g1", blue="b1",
          matte="m1 < thresh ? 0.0 : m1",
-         variables=[("thresh", 1.0)]),
+         variables=[("thresh", 0.1)]),
 
     # --- Wave 2 -------------------------------------------------------------
 
@@ -587,12 +615,14 @@ SETUPS = [
          blue="floor(b1 * scale) / scale",
          matte="m1", variables=[("scale", 10.0)]),
 
-    # Normal relight — Front 1 = normal pass (-1..1); 'l*' = light direction.
+    # Normal relight — Front 1 = normal pass (-1..1); 'l*' = light direction. The manual
+    # /max(length) normalisation guards the (0,0,0) normals outside geometry — a plain
+    # normalize() there is undefined (NaN speckle on the empty background).
     dict(name="normal_relight",
-         red="max(dot(normalize(vec3(r1, g1, b1)), normalize(vec3(lx, ly, lz))), 0.0)",
-         green="max(dot(normalize(vec3(r1, g1, b1)), normalize(vec3(lx, ly, lz))), 0.0)",
-         blue="max(dot(normalize(vec3(r1, g1, b1)), normalize(vec3(lx, ly, lz))), 0.0)",
-         matte="m1", variables=[("lx", 0.0), ("ly", 0.0), ("lz", 1.0)]),
+         red="lite", green="lite", blue="lite",
+         matte="m1", variables=[("lx", 0.0), ("ly", 0.0), ("lz", 1.0)],
+         formulas=[("nrm", "vec3(r1, g1, b1) / max(length(vec3(r1, g1, b1)), 0.0001)", 2),
+                   ("lite", "max(dot(nrm, vec3(lx, ly, lz) / max(length(vec3(lx, ly, lz)), 0.0001)), 0.0)", 0)]),
 
     # Checkerboard — 'size' = square size in pixels.
     dict(name="checkerboard",
@@ -972,17 +1002,22 @@ SETUPS = [
          variables=[("bx", 200), ("by", 120), ("hollow", 0.0), ("soft", 2.0)],
          formulas=[("d", "length(max(abs(vec2(x - centre.x, y - centre.y)) - vec2(bx, by), 0.0)) + min(max(abs(x - centre.x) - bx, abs(y - centre.y) - by), 0.0)", 0)]),
 
-    # Hole is a SECOND rounded box with the SAME corner radius (not an inward offset),
-    # so the interior rounding matches the exterior at any `hollow` amount.
+    # Hole is a SECOND rounded box whose corner radius `cin` shrinks with the hole (capped
+    # at `corner`), so the interior rounding matches the exterior once the hole is corner-
+    # sized. `cin` also keeps the inner core extents non-negative — a raw `bx-wall-corner`
+    # goes negative on the short axis (the old midline-slit bug at hollow=0). The
+    # step(0.0001, hollow) gate removes the hole entirely at hollow=0 (the degenerate
+    # zero-area inner box would otherwise still draw a soft 50% line).
     dict(name="sdf_rounded_box",
-         red="smoothstep(-soft, soft, d2) - smoothstep(-soft, soft, d)",
-         green="smoothstep(-soft, soft, d2) - smoothstep(-soft, soft, d)",
-         blue="smoothstep(-soft, soft, d2) - smoothstep(-soft, soft, d)",
-         matte="smoothstep(-soft, soft, d2) - smoothstep(-soft, soft, d)",
+         red="mix(1.0, smoothstep(-soft, soft, d2), step(0.0001, hollow)) - smoothstep(-soft, soft, d)",
+         green="mix(1.0, smoothstep(-soft, soft, d2), step(0.0001, hollow)) - smoothstep(-soft, soft, d)",
+         blue="mix(1.0, smoothstep(-soft, soft, d2), step(0.0001, hollow)) - smoothstep(-soft, soft, d)",
+         matte="mix(1.0, smoothstep(-soft, soft, d2), step(0.0001, hollow)) - smoothstep(-soft, soft, d)",
          variables=[("bx", 200), ("by", 120), ("corner", 40), ("hollow", 0.0), ("soft", 2.0)],
          formulas=[("wall", "(1.0 - hollow) * min(bx, by)", 0),
+                   ("cin", "clamp(hollow * min(bx, by), 0.0, corner)", 0),
                    ("d", "length(max(abs(vec2(x - centre.x, y - centre.y)) - vec2(bx - corner, by - corner), 0.0)) + min(max(abs(x - centre.x) - (bx - corner), abs(y - centre.y) - (by - corner)), 0.0) - corner", 0),
-                   ("d2", "length(max(abs(vec2(x - centre.x, y - centre.y)) - vec2(bx - wall - corner, by - wall - corner), 0.0)) + min(max(abs(x - centre.x) - (bx - wall - corner), abs(y - centre.y) - (by - wall - corner)), 0.0) - corner", 0)]),
+                   ("d2", "length(max(abs(vec2(x - centre.x, y - centre.y)) - vec2(bx - wall - cin, by - wall - cin), 0.0)) + min(max(abs(x - centre.x) - (bx - wall - cin), abs(y - centre.y) - (by - wall - cin)), 0.0) - cin", 0)]),
 
     dict(name="sdf_ring",
          red="1.0 - smoothstep(-soft, soft, d)", green="1.0 - smoothstep(-soft, soft, d)",
@@ -990,13 +1025,17 @@ SETUPS = [
          variables=[("radius", 200), ("thickness", 20), ("soft", 2.0)],
          formulas=[("d", "abs(length(vec2(x - centre.x, y - centre.y)) - radius) - thickness", 0)]),
 
+    # True-Euclidean regular-polygon SDF (angular fold to one wedge, then distance to the
+    # edge segment). Interior depth is uniformly the apothem radius*cos(PI/sides), so the
+    # `hollow` cut-out grows evenly from hollow=0 — the previous radially-scaled distance
+    # made `hollow` do nothing for the first chunk of its range (worse at low side counts).
     dict(name="sdf_polygon",
-         red=_HOLLOW("radius"), green=_HOLLOW("radius"),
-         blue=_HOLLOW("radius"), matte=_HOLLOW("radius"),
+         red=_HOLLOW("radius * cos(PI / sides)"), green=_HOLLOW("radius * cos(PI / sides)"),
+         blue=_HOLLOW("radius * cos(PI / sides)"), matte=_HOLLOW("radius * cos(PI / sides)"),
          variables=[("radius", 200), ("sides", 6), ("rot", 0.0), ("hollow", 0.0), ("soft", 2.0)],
-         formulas=[("r", "length(vec2(x - centre.x, y - centre.y))", 0),
-                   ("a", "atan(y - centre.y, x - centre.x) + rot", 0),
-                   ("d", "r - radius * cos(PI / sides) / cos(mod(a, 2.0 * PI / sides) - PI / sides)", 0)]),
+         formulas=[("a", "mod(atan(y - centre.y, x - centre.x) + rot, 2.0 * PI / sides) - PI / sides", 0),
+                   ("q", "length(vec2(x - centre.x, y - centre.y)) * vec2(cos(a), sin(a))", 1),
+                   ("d", "length(vec2(q.x - radius * cos(PI / sides), q.y - clamp(q.y, -radius * sin(PI / sides), radius * sin(PI / sides)))) * sign(q.x - radius * cos(PI / sides))", 0)]),
 
     # --- HSV / chroma colour -----------------------------------------------
 
@@ -1110,7 +1149,7 @@ SETUPS = [
     # Mandelbrot — c = pixel, z0 = (cRe,cIm). cRe/cIm seed the iteration (default 0,0 = the
     # classic set); KEYFRAME them to morph, mirroring Julia's constant. Grayscale via _solid.
     dict(name="mandelbrot",
-         **_solid(_FRAC_ESCAPE),
+         **_solid(_FRAC_ESCAPE1),
          variables=[("zoom", 400.0), ("cRe", 0.0), ("cIm", 0.0),
                     ("gain", 1.0), ("gamma", 1.0)],
          formulas=_fractal_chain("vec3(cRe, cIm, 0.0)", _FRAC_PIX)),
@@ -1125,7 +1164,7 @@ SETUPS = [
     # Burning Ship — like Mandelbrot but fold z to abs() before each square (abs_z=True).
     # cRe/cIm seed z0 (default 0,0 = classic); KEYFRAME to morph. Grayscale via _solid.
     dict(name="burning_ship",
-         **_solid(_FRAC_ESCAPE),
+         **_solid(_FRAC_ESCAPE1),
          variables=[("zoom", 400.0), ("cRe", 0.0), ("cIm", 0.0),
                     ("gain", 1.0), ("gamma", 1.0)],
          formulas=_fractal_chain("vec3(cRe, cIm, 0.0)", _FRAC_PIX, abs_z=True)),
@@ -1145,9 +1184,12 @@ SETUPS = [
 
     # Kaleidoscope fold — mirror-fold angular space into 'segments' wedges around Centre.
     # Source UV is reconstructed from the folded angle + original radius, back to 0..1.
+    # Reconstruction is anchored at Centre (centre.x/width, centre.y/height) like the other
+    # ST-map generators — a hard-coded 0.5 would mirror content from the frame middle even
+    # when the pivot has been dragged elsewhere.
     dict(name="kaleidoscope_map",
-         red="0.5 + cos(fa) * rad",
-         green="0.5 + sin(fa) * rad * (width / height)",
+         red="centre.x / width + cos(fa) * rad",
+         green="centre.y / height + sin(fa) * rad * (width / height)",
          blue="0.0", matte="1.0",
          variables=[("segments", 6.0), ("rot", 0.0)],
          formulas=[("nx", "((x + 0.5 - centre.x) / width)", 0),
@@ -1233,9 +1275,9 @@ SETUPS = [
     # rotation matrix on the exposed/saturated RGB (formula `pr`), angle from g2.
     # Defaults map a flat 0.5 control map to no change. Matte passes m1 through.
     dict(name="painted_grade",
-         red="pr.x * (0.299 + 0.701 * c + 0.168 * s) + pr.y * (0.587 - 0.587 * c + 0.330 * s) + pr.z * (0.114 - 0.114 * c - 0.497 * s)",
-         green="pr.x * (0.299 - 0.299 * c - 0.328 * s) + pr.y * (0.587 + 0.413 * c + 0.035 * s) + pr.z * (0.114 - 0.114 * c + 0.292 * s)",
-         blue="pr.x * (0.299 - 0.300 * c + 1.250 * s) + pr.y * (0.587 - 0.588 * c - 1.050 * s) + pr.z * (0.114 + 0.886 * c - 0.203 * s)",
+         red=_hrot_rows("pr.x", "pr.y", "pr.z")[0],
+         green=_hrot_rows("pr.x", "pr.y", "pr.z")[1],
+         blue=_hrot_rows("pr.x", "pr.y", "pr.z")[2],
          matte="m1",
          variables=[("expRange", 2.0), ("hueRange", 1.0), ("satRange", 1.0)],
          formulas=[
@@ -1268,7 +1310,7 @@ SETUPS = [
          green="mix(g1, g1 * tintG, smoothstep(near, far, m1) * strength)",
          blue="mix(b1, b1 * tintB, smoothstep(near, far, m1) * strength)",
          matte="smoothstep(near, far, m1)",
-         variables=[("near", 0.0), ("far", 1.0), ("strength", 0.0),
+         variables=[("near", 0.0), ("far", 1.0), ("strength", 1.0),
                     ("tintR", 0.6), ("tintG", 0.8), ("tintB", 1.4)]),
 
     # --- Wave 4: optics / physics generators -------------------------------
@@ -1307,6 +1349,9 @@ SETUPS = [
     # Starfield — tile space into 'cellSize' cells, hash each cell (_hash2) to place one
     # star with random brightness; KEYFRAME 'twinkle' to make them pulse (each cell's
     # hash sets its phase). Stars above 'threshold' only; faint hash tint on RGB.
+    # The existence gate `g` is an INDEPENDENT hash — gating on the position hash h.y
+    # forced every visible star to the top edge of its cell (rows of clipped discs). The
+    # position is inset by the 0.12 disc radius so no star crosses its cell border.
     dict(name="starfield",
          red="star * (0.7 + 0.3 * h.x)",
          green="star",
@@ -1315,8 +1360,9 @@ SETUPS = [
          variables=[("cellSize", 40.0), ("twinkle", [(1, 0.0), (100, 1.0)]),
                     ("threshold", 0.92), ("brightness", 1.0)],
          formulas=[("h", _hash2("floor(vec2(x, y) / cellSize)"), 1),
-                   ("d", "length(fract(vec2(x, y) / cellSize) - h)", 0),
-                   ("star", "smoothstep(threshold, 1.0, h.y) * (1.0 - smoothstep(0.0, 0.12, d)) "
+                   ("g", "fract(sin(dot(floor(vec2(x, y) / cellSize), vec2(419.2, 371.9))) * 43758.5453)", 0),
+                   ("d", "length(fract(vec2(x, y) / cellSize) - (vec2(0.12, 0.12) + 0.76 * h))", 0),
+                   ("star", "smoothstep(threshold, 1.0, g) * (1.0 - smoothstep(0.0, 0.12, d)) "
                             "* brightness * (0.4 + 0.6 * (0.5 + 0.5 * sin((twinkle + h.x) * 2.0 * PI)))", 0)]),
 
     # Radar sweep — a rotating sweep line around Centre. 'sweep' (KEYFRAME 0->2*PI) is the
@@ -1455,12 +1501,12 @@ SETUPS = [
     # pixels red. matte = the out-of-bounds mask. Diagnostic for an upstream ST-map.
     dict(name="st_uv_map_inspector",
          red="col.x", green="col.y", blue="col.z",
-         matte="clamp(step(1.0, r1) + step(1.0, g1) + (1.0 - step(0.0, r1)) + (1.0 - step(0.0, g1)), 0.0, 1.0)",
+         matte="clamp(step(1.0001, r1) + step(1.0001, g1) + (1.0 - step(0.0, r1)) + (1.0 - step(0.0, g1)), 0.0, 1.0)",
          variables=[("checkN", 20.0)],
          formulas=[("col",
                     "mix(mix(vec3(r1, g1, 0.5), vec3(r1, g1, 0.5) * 0.6, mod(floor(r1 * checkN) + floor(g1 * checkN), 2.0)), "
                     "vec3(1.0, 0.0, 0.0), "
-                    "clamp(step(1.0, r1) + step(1.0, g1) + (1.0 - step(0.0, r1)) + (1.0 - step(0.0, g1)), 0.0, 1.0))", 2)]),
+                    "clamp(step(1.0001, r1) + step(1.0001, g1) + (1.0 - step(0.0, r1)) + (1.0 - step(0.0, g1)), 0.0, 1.0))", 2)]),
 
     # Lens vignette — physical cos^4 falloff around Centre. `falloff` = how fast it
     # darkens (larger = gentler, like a longer focal length in px); `amount` 0..1 mixes
@@ -1629,10 +1675,10 @@ SETUPS = [
     # Zone-system posterize — quantise luma into `zones` greyscale steps (Ansel Adams
     # zones) spanning 0..1, for exposure-distribution QC and a banded look. matte = value.
     dict(name="zone_system_posterize",
-         red="floor(clamp(L, 0.0, 1.0) * zones) / (zones - 1.0)",
-         green="floor(clamp(L, 0.0, 1.0) * zones) / (zones - 1.0)",
-         blue="floor(clamp(L, 0.0, 1.0) * zones) / (zones - 1.0)",
-         matte="floor(clamp(L, 0.0, 1.0) * zones) / (zones - 1.0)",
+         red="min(floor(clamp(L, 0.0, 1.0) * zones), zones - 1.0) / (zones - 1.0)",
+         green="min(floor(clamp(L, 0.0, 1.0) * zones), zones - 1.0) / (zones - 1.0)",
+         blue="min(floor(clamp(L, 0.0, 1.0) * zones), zones - 1.0) / (zones - 1.0)",
+         matte="min(floor(clamp(L, 0.0, 1.0) * zones), zones - 1.0) / (zones - 1.0)",
          variables=[("zones", 11.0)],
          formulas=[("L", _LUMA, 0)]),
 
@@ -2280,7 +2326,7 @@ DOCS = {
                           "atmosphere look plus a holdout for the mid-ground.",
                           "Front 1 (beauty) + Matte 1 (depth)"),
     # stylization
-    "halftone": ("Newspaper halftone: tiles the frame into `cell`-px cells (rotatable by `angle`) and draws a dot per cell whose size grows with that cell's luma.",
+    "halftone": ("Newspaper halftone: tiles the frame into `cell`-px cells (rotatable by `angle`) and draws an ink dot per cell whose size grows as that cell darkens.",
                  "Print/comic look, retro screen-print stylisation, animated dot-screen transitions.",
                  "Front 1"),
     "bayer_dither": ("Ordered 4x4 Bayer dithering: posterizes Front 1's luma to `levels` steps with a dispersed-dot threshold matrix for that crunchy retro 1-bit look.",
@@ -2564,7 +2610,7 @@ EXPECTS = {
     "thin_film": _GEN, "wave_interference": _GEN, "moire": _GEN,
     "starfield": _GEN, "radar_sweep": _GEN,
     # diagnostics
-    "color_blindness": "display-referred sRGB-ish (the Machado 2009 matrices are fit for sRGB display values)",
+    "color_blindness": "linear RGB by the paper (Machado 2009); display-encoded sRGB works as the common QC approximation",
     "exposure_zebra": "scene-linear / your working space (clip thresholds hi=1.0, lo=0.0 assume normalised values)",
     "gamut_clip": "scene-linear / your working space (negative + over-ceiling detection on raw channel values)",
     "thin_lens_coc": "depth raw in (Matte 1); outputs a 0..maxBlur circle-of-confusion map (Raw/Data)",
@@ -4040,11 +4086,13 @@ A **rounded rectangle** (SDF) with a `corner` radius — and a hollow that stays
 rounded. Centred on **Centre**.
 
 ### Why the hole is a second box (the clever bit)
-When `hollow` > 0 the interior cut-out is a **second rounded box with the *same* `corner`
-radius**, not an inward SDF offset. An inward offset would **sharpen** the inner corners
-(the radius shrinks as you move in); subtracting a matched rounded box keeps the inner corners
-as round as the outer ones — so a rounded frame looks right at any `hollow` amount. This is
-why its formulas (`wall`, `d`, `d2`) differ from the other shapes' simple `_HOLLOW`.
+When `hollow` > 0 the interior cut-out is a **second rounded box**, not an inward SDF offset.
+An inward offset would **sharpen** the inner corners (the radius shrinks as you move in);
+subtracting a matched rounded box keeps the inner corners round — so a rounded frame looks
+right at any `hollow` amount. The inner corner radius (`cin`) grows with the hole and caps at
+`corner`, so a just-opened hole is small and capsule-ish, and by the time it's corner-sized
+its rounding **matches the exterior**. This is why its formulas (`wall`, `cin`, `d`, `d2`)
+differ from the other shapes' simple `_HOLLOW`.
 
 ### Practical notes
 - `bx`/`by` = **half-extents**; `corner` = corner radius (px); `hollow` 0 = solid → frame;
@@ -4073,7 +4121,9 @@ shared hollow control.
 - `hollow` 0 = solid → cuts an inward hole (frame/outline); `soft` = edge feather.
 
 ### Practical notes
-- Built from the polar SDF (`r`, `a`, `d` formulas), so edges stay crisp at any size.
+- Built from a true-Euclidean regular-polygon SDF (fold the angle into one wedge — formula
+  `a` — then measure distance to the edge segment via `q`/`d`), so edges stay crisp at any
+  size and `hollow` grows evenly from the first nudge.
 - Uses: polygonal masks and outlines, stylised shapes, aperture/iris mattes.
 """,
     "radial_ramp": """
@@ -4242,10 +4292,11 @@ Its `t` uses the **one-cycle** keyframe (0 → 1 over frames 1–100), and `t` 0
 A **hard floor on the matte**: any alpha below `thresh` drops to 0; the rest keeps its value.
 RGB passes through untouched (it only rewrites alpha).
 
-### The default keeps only solids
-With `thresh` 1.0, *everything below fully-opaque* goes to 0 — so only pixels that were
-exactly 1.0 survive. That's a "core / solids only" crunch: it strips semi-transparent edges,
-spill, and soft fringe. **Lower `thresh`** to keep more of the partial alpha.
+### The default crushes the noise floor
+With `thresh` 0.1, faint low-level alpha (grain lift, compression haze, stray speckle) drops
+to 0 while real edges and solids pass through. **Raise `thresh`** to bite deeper — all the
+way to 1.0 for a "core / solids only" crunch that keeps just the fully-opaque pixels and
+strips every semi-transparent edge.
 
 ### Practical notes
 - Matte on **Matte 1**. Use before a hard composite to kill a noisy/feathered edge, or to
@@ -4465,8 +4516,8 @@ green, V on blue**.
 ## Notes
 
 **Global hue rotation** — spins every colour around the wheel by a fixed amount; `hue` 0..1 =
-one full turn. Uses a luma-preserving rotation matrix (no HSV decode), so **brightness is
-unchanged**.
+one full turn, positive values rotating red → green → blue. Uses a luma-preserving rotation
+matrix (Rec.709 weights, no HSV decode), so **brightness is unchanged**.
 
 ### Practical notes
 - Affects the **whole image** equally. To rotate only one colour band, use `color_replace`
@@ -4526,9 +4577,9 @@ node's practical size limit (K=3 would be ~33 KB per formula). So:
 Each pixel maps to the complex plane relative to the node **Centre**, scaled by `zoom`
 (bigger `zoom` = closer). `c` = that coordinate, `z` starts at `(cRe, cIm)`. Every iteration
 squares `z` and adds `c`, and accumulates `step(|z|^2, 4.0)` — 1 while still inside the
-bailout radius, 0 once it escapes. Summing across all 8 iterations gives a 0..1 **smooth
-escape value** (`z3.z / 8.0`, normalised to the *maximum possible* count so the tonal range
-stays stable even though only 8 steps run).
+bailout radius, 0 once it escapes. Summing across the iterations gives a 0..1 **smooth
+escape value** (`(z3.z - 1.0) / 7.0`: the first add is guaranteed because `z0` starts inside
+the bailout, so it's discounted — far exterior reads a true 0.0/black, interior 1.0/white).
 
 ### The seed (keyframe `cRe`/`cIm`)
 `cRe`/`cIm` set the **starting value of `z`** (default `0,0` = the classic Mandelbrot). They
@@ -4846,7 +4897,8 @@ matte.
 
 ### The two outputs
 - **RGB:** the beauty (Front 1) blended toward a tint (`tintR/G/B`) by depth, strength
-  `strength`. Default `strength = 0.0` leaves the beauty untouched, so the look is opt-in.
+  `strength`. Default `strength = 1.0` shows the cool depth tint on load; set it to 0 to
+  pass the beauty through untouched.
 - **Matte:** `smoothstep(near, far, m1)` — a soft 0..1 isolation of the depth range between
   `near` and `far`. This is computed **independently** of the RGB grade.
 
@@ -4862,19 +4914,19 @@ matte.
 ## Notes
 
 The classic **newspaper / comic dot-screen**. The frame is tiled into a regular grid of
-`cell`-pixel squares; in each cell a single dot is drawn whose radius grows with that
-region's brightness — bright areas pack big overlapping dots (reads as light), dark areas
-shrink to tiny dots (reads as dark). Output is two-colour, defaulting to black ink on white
-paper.
+`cell`-pixel squares; in each cell a single INK dot is drawn whose radius grows as that
+region darkens — dark areas pack big overlapping ink dots (reads as dark), bright areas
+shrink to tiny dots (reads as light), exactly like print. Output is two-colour, defaulting
+to black ink on white paper.
 
 ### How it works
 1. Pixel coordinates are rotated by `angle` (radians) so the dot grid can sit at the
    traditional ~15-45 degree screen angle instead of square-on.
 2. `mod(coords, cell)` folds everything into one cell; the dot is the SDF of a circle whose
-   radius is `0.5 * cell * sqrt(luma)` (the `sqrt` makes dot *area* roughly linear in luma,
-   which is what print actually does).
-3. A soft threshold of that SDF gives the inked pixel, then `_two_color` maps it from paper
-   (`aR/aG/aB`, default black... wait — see below) to ink.
+   radius is `0.5 * cell * sqrt(1 - luma)` (the `sqrt` makes ink *area* roughly linear in
+   darkness, which is what print actually does).
+3. A soft threshold of that SDF gives the inked pixel, then `_two_color` maps ink to
+   `aR/aG/aB` (default black) and paper to `bR/bG/bB` (default white).
 
 ### Controls
 - `cell` — dot pitch in pixels. Smaller = finer screen.
@@ -5016,10 +5068,12 @@ pixel-art / retro-console look without needing a full per-colour palette match (
 blow the 8-variable cap three times over).
 
 ### How it works
-The Rec.709 luma is quantized: `floor(luma * levels) / (levels - 1)` snaps it to `levels`
-evenly-spaced values. That stepped value `q` then drives `_two_color`, so each tone lands
-on a `mix` between colour A (darkest) and colour B (lightest). Pick the two endpoints and
-the intermediate steps fall on the ramp between them.
+The Rec.709 luma is quantized: `min(floor(luma * levels), levels - 1) / (levels - 1)` snaps
+it to `levels` evenly-spaced values spanning 0..1 (the `min` pins full white — and anything
+clipped above it — to the top step instead of overshooting past colour B). That stepped
+value `q` then drives `_two_color`, so each tone lands on a `mix` between colour A (darkest)
+and colour B (lightest). Pick the two endpoints and the intermediate steps fall on the ramp
+between them.
 
 ### Controls
 - `levels` — number of tones (4 = the classic 4-shade console look; 2 = hard duotone).
@@ -5151,9 +5205,14 @@ cell is hashed once (`_hash2`) and may hold a single star. Because the hash is d
 cell, the field is stable when you scrub (only the twinkle moves).
 
 ### How it works
-- `h = _hash2(floor(pixel / cellSize))` — a per-cell random vec2. `h.y` gates whether the cell
-  has a star (`smoothstep(threshold, 1.0, h.y)` — raise `threshold` for fewer, brighter stars);
-  `h.x` seeds its twinkle phase and a faint warm/cool tint.
+- `h = _hash2(floor(pixel / cellSize))` — a per-cell random vec2 that sets the star's
+  **position** within its cell (inset from the borders so a star's disc never crosses into a
+  neighbouring cell and gets clipped); `h.x` also seeds its twinkle phase and a faint
+  warm/cool tint.
+- A second, **independent** per-cell hash `g` gates whether the cell has a star
+  (`smoothstep(threshold, 1.0, g)` — raise `threshold` for fewer, brighter stars). Keeping the
+  gate separate from the position hash matters: gating on `h.y` would mean every visible star
+  sits at the top of its cell (rows of clipped discs).
 - `d` is the distance from the pixel to the star's sub-cell position; a `smoothstep` makes a
   small round dot.
 
@@ -5212,8 +5271,10 @@ arrays or branches — and each output channel is a single `dot()` against `w`.
 - `amount` 0..1 blends original→full simulation (handy for an A/B nudge).
 
 ### Practical notes
-- **Feed display-referred, sRGB-ish values.** The matrices are fit in sRGB display space; on
-  scene-linear footage add a view transform / `linear_to_srgb` before this node.
+- **Colour space:** the Machado matrices are **derived in linear RGB**. Many tools (Chrome
+  DevTools included) apply them straight to display-encoded sRGB as an approximation — that's
+  acceptable for QC, but for the by-the-paper result run them on linear values (on graded
+  display footage, an `srgb_to_linear` → this node → `linear_to_srgb` sandwich).
 - Matte just passes **Matte 1** through; connect it if you need the alpha preserved.
 """,
     "exposure_zebra": """
@@ -5454,6 +5515,15 @@ DEPENDS = {
     "hsv_to_rgb": _dep("HSV source (e.g. `rgb_to_hsv`) → **this node**",
                        "Expects an **HSV-encoded** input, which in practice comes from "
                        "`rgb_to_hsv` (or another HSV source) upstream."),
+    "srgb_to_linear": _dep("display-encoded sRGB → **this node** → linear-only ops → `linear_to_srgb`",
+                           "Decode half of an **encode/decode pair**: bracket linear-domain maths "
+                           "(exposure, merges, light math) between this and **`linear_to_srgb`**. "
+                           "A convenience when a proper OCIO/colour-management node isn't "
+                           "available — not a replacement for your colour pipeline."),
+    "linear_to_srgb": _dep("`srgb_to_linear` (or scene-linear source) → linear-only ops → **this node**",
+                           "Encode half of the pair: re-applies the sRGB curve after working in "
+                           "linear. Keep it matched with **`srgb_to_linear`** so the round-trip is "
+                           "lossless; prefer real colour management when you have it."),
     "motion_vector_visualize": _dep("motion-vector pass (Front 1) → **this node**",
                                     _DEP_MV + " Outputs a *view* of the vectors (hue=direction, "
                                     "value=speed) for QC — not a usable MV pass. Park it on a monitor."),

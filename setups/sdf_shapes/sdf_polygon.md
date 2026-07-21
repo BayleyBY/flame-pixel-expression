@@ -22,5 +22,7 @@ shared hollow control.
 - `hollow` 0 = solid → cuts an inward hole (frame/outline); `soft` = edge feather.
 
 ### Practical notes
-- Built from the polar SDF (`r`, `a`, `d` formulas), so edges stay crisp at any size.
+- Built from a true-Euclidean regular-polygon SDF (fold the angle into one wedge — formula
+  `a` — then measure distance to the edge segment via `q`/`d`), so edges stay crisp at any
+  size and `hollow` grows evenly from the first nudge.
 - Uses: polygonal masks and outlines, stylised shapes, aperture/iris mattes.

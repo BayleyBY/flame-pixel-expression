@@ -32,9 +32,9 @@ node's practical size limit (K=3 would be ~33 KB per formula). So:
 Each pixel maps to the complex plane relative to the node **Centre**, scaled by `zoom`
 (bigger `zoom` = closer). `c` = that coordinate, `z` starts at `(cRe, cIm)`. Every iteration
 squares `z` and adds `c`, and accumulates `step(|z|^2, 4.0)` — 1 while still inside the
-bailout radius, 0 once it escapes. Summing across all 8 iterations gives a 0..1 **smooth
-escape value** (`z3.z / 8.0`, normalised to the *maximum possible* count so the tonal range
-stays stable even though only 8 steps run).
+bailout radius, 0 once it escapes. Summing across the iterations gives a 0..1 **smooth
+escape value** (`(z3.z - 1.0) / 7.0`: the first add is guaranteed because `z0` starts inside
+the bailout, so it's discounted — far exterior reads a true 0.0/black, interior 1.0/white).
 
 ### The seed (keyframe `cRe`/`cIm`)
 `cRe`/`cIm` set the **starting value of `z`** (default `0,0` = the classic Mandelbrot). They

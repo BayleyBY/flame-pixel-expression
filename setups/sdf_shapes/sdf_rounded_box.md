@@ -16,11 +16,13 @@ A **rounded rectangle** (SDF) with a `corner` radius — and a hollow that stays
 rounded. Centred on **Centre**.
 
 ### Why the hole is a second box (the clever bit)
-When `hollow` > 0 the interior cut-out is a **second rounded box with the *same* `corner`
-radius**, not an inward SDF offset. An inward offset would **sharpen** the inner corners
-(the radius shrinks as you move in); subtracting a matched rounded box keeps the inner corners
-as round as the outer ones — so a rounded frame looks right at any `hollow` amount. This is
-why its formulas (`wall`, `d`, `d2`) differ from the other shapes' simple `_HOLLOW`.
+When `hollow` > 0 the interior cut-out is a **second rounded box**, not an inward SDF offset.
+An inward offset would **sharpen** the inner corners (the radius shrinks as you move in);
+subtracting a matched rounded box keeps the inner corners round — so a rounded frame looks
+right at any `hollow` amount. The inner corner radius (`cin`) grows with the hole and caps at
+`corner`, so a just-opened hole is small and capsule-ish, and by the time it's corner-sized
+its rounding **matches the exterior**. This is why its formulas (`wall`, `cin`, `d`, `d2`)
+differ from the other shapes' simple `_HOLLOW`.
 
 ### Practical notes
 - `bx`/`by` = **half-extents**; `corner` = corner radius (px); `hollow` 0 = solid → frame;
