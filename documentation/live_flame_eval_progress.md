@@ -53,6 +53,27 @@ fine, they just rendered subtly-to-plainly wrong). Fixed in `generate_setups.py`
 (0,0,0) normals outside geometry). **Doc-only (no re-verify needed):** `color_blindness.md`
 (colour-space claim corrected to linear-RGB per Machado), `mandelbrot.md`, `starfield.md`, etc.
 
+### Re-verify checklist for the 15 revoked — what to CONFIRM (visual, not just load)
+- ☐ `sdf_rounded_box` — default is fully solid (no faint slit through the middle); `hollow` 0→1 grows a hole with round inner corners
+- ☐ `sdf_polygon` — `hollow` opens the middle immediately from 0 (try `sides` 3, the old worst case)
+- ☐ `starfield` — stars scattered randomly as full round discs; no horizontal rows, no flat-topped stars
+- ☐ `radial_ramp` — `softness` 0 gives a clean hard circle, no speckle on the rim
+- ☐ `halftone` — dark areas get the BIG black ink dots, bright areas small/none
+- ☐ `crosshatch` — black lines on white paper; bright areas stay white
+- ☐ `palette_quantize` — blown highlights land exactly on colour B, never over-bright
+- ☐ `zone_system_posterize` — super-white input tops out at exactly 1.0
+- ☐ `st_uv_map_inspector` — a clean `stmap`'s top/right edge (UV==1.0) is NOT tinted red
+- ☐ `kaleidoscope_map` — via STMap, drag Centre onto a subject: mirrored content comes from the pivot, not frame middle
+- ☐ `mandelbrot` — far exterior is true black (was 12.5% grey)
+- ☐ `burning_ship` — same, exterior true black
+- ☐ `painted_grade` — `g2` above 0.5 rotates hue red→green→blue; brightness holds
+- ☐ `dual_output_depth` — loads with the cool depth tint visible (`strength` 1.0); matte still keys the slab
+- ☐ `alpha_crunch` — loads with `thresh` 0.1; a normal matte passes mostly intact
+Plus, in the basics folders (never confirmed, GLSL also fixed): `hue_rotate`/`color_replace`/
+`hsl_targeted` — `color_replace` defaults turn green→RED (was violet), `hsl_targeted` `dHue`
++0.05 on a red pushes toward ORANGE; `normal_relight` — background outside geometry is clean
+black, no NaN speckle.
+
 ### ▶▶ RESUME HERE (next session) — 60 setups left (45 basics + 15 revoked above)
 Confirm the remaining folders (whole-folder batches have been passing fast), then re-verify the
 15 revoked bug-fix setups (their GLSL genuinely changed — eyeball the fixed behaviour, don't just

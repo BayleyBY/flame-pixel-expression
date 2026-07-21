@@ -241,8 +241,21 @@ the library — so if you edit one, they're the most likely to need a fresh live
   usually means an unescaped `<`/`>`, a reserved name (a built-in `uv`/`x`/`y`/`width`/`height`/
   `centre`/`E`/`PI` or input `r1`… used as a variable/formula — the validator catches this), or a
   format drift from the generator.
-- **Outstanding next step:** run the in-Flame load pass over all 156 new-format setups (tracker:
-  `documentation/live_flame_eval_progress.md`), starting with the highest-risk list above. Counts
-  here/README can now be reconciled with `/sync-docs` (the freeze is lifted and the layout is flat).
+- **Outstanding next step:** finish the in-Flame pass (tracker:
+  `documentation/live_flame_eval_progress.md`): (1) the remaining basics folders, resuming at
+  `aov_tools/`; (2) **re-verify the 15 setups revoked by the 2026-07-21 bug-fix pass** — their
+  GLSL changed, and since every one of those bugs had *passed* a load-check, the re-verify must
+  be VISUAL (the tracker's bug-fix section says exactly what to look for per setup). Counts
+  here/README can be reconciled with `/sync-docs` (the freeze is lifted and the layout is flat).
   For *more* setups, pull the next idea from `documentation/setup_expansion_backlog.md` — Tiers 1–4
-  are done; only the Deferred / flagged items remain.
+  are done; only the Deferred / flagged items (and the `digital_counter` alphanumeric idea) remain.
+- **Known accepted limitations (2026-07-21 review — deliberate wontfixes, don't re-litigate):**
+  `voronoi_manhattan`'s 3×3 neighbourhood is insufficient for the Manhattan metric on ~0.02% of
+  pixels (a 5×5 gather would ~triple the expression length — accepted); `split_tone`'s tint isn't
+  perfectly luma-neutral (slight brightness shift when tinting, matches common implementations);
+  `voxelize` keeps the `/n` posterize convention (top band unreachable) while
+  `palette_quantize`/`zone_system_posterize` use `/(n−1)` — differing looks, both documented;
+  `glsl_compile_check.py` compiles GLSL 4.10, which accepts int→float promotion (`pow(x, 2)`)
+  that Flame's dialect may not — keep the always-write-decimal-literals rule; both checkers
+  ignore the (always-empty) `<…Declarations>` blocks and hex literals error loudly rather than
+  being supported.
