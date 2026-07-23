@@ -1,0 +1,19 @@
+Cryptomatte object ids for aov_demo_render.exr (float32 hash -> `id` variable)
+
+  ground       hex c5b51ede   float32 id = -5795.8583984375
+  sphere_red   hex 2d6f72d2   float32 id = 1.3611072338659547e-11
+  sphere_blue  hex ed80e095   float32 id = -4.985698034166474e+27
+  sphere_glow  hex 2f248818   float32 id = 1.4964063321798449e-10
+
+Scene ground truth:
+  camera at (0, 1.6, 6.5) looking at (0, 0.9, 0), 45 deg horizontal fov
+  sphere_red   centre (-1.6, 1.0, 0.0) r 1.0, velocity +0.55 x/frame
+  sphere_blue  centre (1.6, 1.0, 0.3) r 1.0, glossy
+  sphere_glow  centre (0.0, 0.45, 1.9) r 0.45, emission (5.6, 2.2, 0.5)
+  ground plane y=0, 1m checker; sky depth = 1e6
+
+Diffuse split (AO-in-comp workflow):
+  diffuse          = direct + indirect x AO baked in (legacy/compat layer)
+  diffuse_direct   = sun x shadow rays -- AO plays no part
+  diffuse_indirect = UNOCCLUDED ambient -- multiply by AO in comp
+  exact beauty = diffuse_direct + diffuse_indirect*AO + specular + emission

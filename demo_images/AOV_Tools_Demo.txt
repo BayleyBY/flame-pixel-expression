@@ -1,0 +1,69 @@
+Read aov_demo_render.exr with no colour transform (Raw / scene-linear tagging) and pull the layers you need as separate Batch branches: diffuse, specular, emission, plus RGBA (the reference beauty) for the verification step. Don't let anything filter or tone-map the branches — every node in this chain assumes scene-linear light values.
+
+1. The core rebuild — two aov_add nodes
+
+Addition is the whole trick: the renderer's light components are additive in linear, and aov_add is literally Front1×gainA + Front2×gainB.
+
+diffuse ──► Front 1 ┐
+                    ├─ aov_add #1 ──► Front 1 ┐
+specular ─► Front 2 ┘                         ├─ aov_add #2 ──► rebuilt beauty
+                              emission ─► Front 2 ┘
+
+- aov_add #1: diffuse on Front 1, specular on Front 2, leave gainA/gainB at 1.0.
+- aov_add #2: that result on Front 1, emission on Front 2, defaults again.
+
+Order doesn't matter mathematically (addition commutes) — the convention of starting with the biggest contributor is just for readable graphs. Two things to know:
+
+- The sky won't match. The AOVs are zero where nothing was hit; the reference beauty has a small sky gradient. That's correct renderer behavior — in a real comp you'd place the rebuild over your background using the alpha. Everywhere alpha = 1, the match is exact.
+- Don't substitute screen_merge here. Screen is A + B − A×B, which only equals addition when one input is black — it's the tool for bolting glows on without clipping, not for reconstruction. Using it would dim every pixel where two passes overlap.
+
+2. Prove it — difference_matte
+
+Rebuilt beauty on Front 1, the EXR's own RGBA beauty on Front 2, gain at 5.0 (crank it to 50 if you're feeling adversarial). Everywhere alpha = 1 you should see pure black — the residue is ~4e-7, far below anything gain can amplify into visibility. The only bright region will be the sky, for the reason above. A rebuild that shows object-shaped ghosts here means a branch is being colour-managed or filtered on the way in.
+
+3. Why you'd do this — the creative variants
+
+An exact rebuild is the calibration step; the point of tearing beauty apart is putting it back together differently:
+
+- Swap aov_add #2 for aov_grade_add (running sum on Front 1, emission on Front 2): exposure 2.5 with tintR/G/B ≈ 1.0/0.5/0.2 turns the little emitter into a hot orange practical without touching anything else in frame.
+- Go one level deeper on diffuse before step 1: albedo_divide (diffuse on Front 1, albedo on Front 2) extracts the pure lighting; grade that — shadows, warmth, contrast — with no texture contamination (on our render, dividing visibly removes the floor checker); then albedo_multiply (albedo on Front 1, graded lighting on Front 2) rebuilds the diffuse and feeds it into the chain. Divide → multiply with no grade in between is another exact no-op you can verify with difference_matte.
+- ao_multiply (beauty on Front 1, the AO layer on Matte 1): note this one is creative-only on our render — the AO is already baked into the diffuse's ambient term, so adding it again darkens beyond ground truth. amount 0.5, aoGamma 1.5 is a tasteful crunch, but leave it out of the exactness test.
+
+What screen_merge does: it implements the classic screen blend, 1 − (1−base)(1−over), with gain scaling the incoming pass and a clamp holding it to 0..1. Instead of stacking light on top of the base like an add, it multiplies the two images' remaining headroom: where the base is black the pass contributes fully, and as the base approaches 1.0 the contribution tapers toward zero. The result can never exceed 1.0, so a glow lands on a bright area as a smooth roll-off instead of a hard clip. That asymptotic behavior is also its limitation — it's a look operator, not physics, which is why the beauty-rebuild walkthrough used aov_add instead (screen only equals addition where one input is black).
+
+The demonstration (in the image above): I took our EXR's beauty-minus-emission as the base, built a fat glow from the emission pass (emitter + blurred halo — in Flame that blur is a Glow or Blur node, since the Pixel Expression node can't sample neighbours), display-encoded both, and combined them two ways with the exact GLSL math:
+
+- Plain add (left): 12.1% of the frame exceeds 1.0 and gets destroyed by the clamp — the halo becomes a huge flat white disc, and in the zoomed inset the checker tiles and the red sphere's shadow edge simply vanish into it.
+- screen_merge (right): the same glow, but zero pixels exceed 1.0. The blown region shrinks to the emitter's actual core, and in the inset the checker pattern and shadow boundary stay readable almost all the way in, with a warm graded fringe where add had a wall of white.
+
+To reproduce in Flame with the library: read aov_demo_render.exr raw → branch diffuse + specular into aov_add (that's the base) → branch emission through a Glow/Blur node (the halo) → screen_merge with the base on Front 1, the glow on Front 2, and gain to taste (it scales the glow before the screen math — try 1.0 vs 2.0; even at high gain it cannot clip, it just saturates sooner). Wire the base's matte to Matte 1 if you want OutMatte passthrough, as usual.
+
+One nuance from the setup's own docs worth knowing: screen assumes 0..1 inputs, so it's most "correct" on display-referred images like this demo. Run on scene-linear data it still works — the clamp tames the over pass — but it behaves like a soft add rather than a true screen, which is why the .md's Expects line offers both and tells you to choose by eye. And if a renderer's glow pass carries negative fireflies, aov_clamp_negative goes in front of it — a negative input would push screen above 1 and break its no-clip guarantee.
+
+
+
+------
+
+Confirmed and done — the re-rendered demo_images/aov_demo_render.exr (38 channels, 18 layers, 87 MB) now carries the three-way split, and the edge-error hypothesis checked out perfectly: 100% of the pixels where the comp-side rebuild deviates are object-boundary pixels; on single-object pixels the split rebuild is exact to 2e-5.
+
+What's new in the file (everything else unchanged, same crypto ids):
+
+- diffuse_direct — sun × traced shadows. AO plays no part, by construction.
+- diffuse_indirect — the unoccluded ambient: this is the "diffuse without AO" pass from your question, delivered the way an AO-in-comp pipeline would.
+- diffuse (AO baked) stays in the file, so the original two-node walkthrough still reconstructs exactly.
+
+The manifest sidecar now documents the split and the recipe. The upgraded Flame rebuild — ao_multiply is now part of the provable chain:
+
+diffuse_indirect ─► Front 1 ┐
+                            ├─ ao_multiply ──► Front 1 ┐
+AO ──────────────► Matte 1 ┘   (defaults)              ├─ aov_add ─► + specular ─► aov_add ─► + emission ─► aov_add ─► beauty
+                                    diffuse_direct ─► Front 2 ┘
+
+At ao_multiply's defaults (amount 1.0, aoGamma 1.0) it's a straight multiply, which is exactly what the reconstruction needs — and it demonstrates the correct placement of AO: only the indirect branch passes through it, diffuse_direct joins afterward untouched.
+
+The honest numbers, which are themselves the lesson:
+
+- Baked-diffuse path: max error 4.3e-7 everywhere solid — pure addition commutes with pixel filtering, so it's exact.
+- Three-way path: exact (2e-5) on 99.88% of the frame, but up to 2e-2 on the 0.12% of pixels straddling object edges. That's not a bug in either the render or the setups — multiplying two filtered passes (indirect × AO) can't equal the filtered product where both change inside one pixel. It's the fundamental reason real path tracers deliver diffuse_indirect already-occluded and treat AO as a utility pass. Your difference_matte check at gain 5 will still look black; crank it to ~50 and thin object outlines appear — which is precisely the artifact to know about when grading AO in comp on production renders.
+
+The contact sheet (demo_images/aov_contact_sheet.png) is refreshed with the two new tiles — diffuse_direct shows the hard sun/shadow light, diffuse_indirect is flat unoccluded ambient (all the contact shading you see in diffuse comes from the AO multiply).
