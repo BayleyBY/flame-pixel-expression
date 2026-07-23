@@ -18,5 +18,4 @@ blue (`min(g, (r+b)/2)`), the standard suppression. `spill` blends from 0 (off) 
 ### Practical notes
 - Removes green contamination on edges and transmissive areas before/after keying; red and
   blue pass through untouched.
-- For a **blue** screen you'd suppress blue instead — that's a separate generated variant
-  (edit `generate_setups.py`, don't hand-edit the file).
+- For a **blue** screen use `despill_blue` instead.

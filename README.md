@@ -1,6 +1,6 @@
 # Pixel Expression Setup Library
 
-**156 ready-to-load `.pixel_expression_node` setups** translating the best Nuke expression
+**157 ready-to-load `.pixel_expression_node` setups** translating the best Nuke expression
 examples to Flame GLSL, plus **unconventional / experimental / utility** setups (fractals,
 ST-map generators, painted control surfaces, stylization, optics/physics, diagnostics).
 Load via the node's setup browser. **Connect inputs in Batch** — wiring isn't stored in these
@@ -9,7 +9,7 @@ files.
 **Requires Autodesk Flame 2027.1+** — the release that introduced the Pixel Expression node.
 
 **The library is split by publication status (2026-07-22):**
-- **`setups/Uploaded to Logik-Portal/` — 111 setups, all verified to work in Flame 2027.1 and published to
+- **`setups/Uploaded to Logik-Portal/` — 112 setups, all verified to work in Flame 2027.1 and published to
   the Logik Portal.**
 - **`setups/WORK IN PROGRESS/` — 45 setups held back from the Portal** (set-op mattes,
   simple grades, log-curve conversions, basic noise/patterns). They pass the offline
@@ -26,17 +26,18 @@ Tooling (in `tools/`):
   `Uploaded to Logik-Portal`/`WORK IN PROGRESS` layout survives a regenerate.
 - `tools/validate_setups.py` — sanity sweep: XML well-formedness, slot counts, balanced parens,
   reserved-name collisions, and undefined-identifier checks (catches variable typos).
-  Run after any edit; current status: **156 setups, 0 errors, 0 warnings**.
+  Run after any edit; current status: **157 setups, 0 errors, 0 warnings**.
 - `tools/glsl_compile_check.py` — optional pre-Flame gate: compiles every setup's GLSL with
   `glslangValidator` (`brew install glslang`) to catch real compile errors the static checker
-  can't. Current status: **all 156 compile, 0 errors**. A proxy for — not a replacement for — a
+  can't. Current status: **all 157 compile, 0 errors**. A proxy for — not a replacement for — a
   real in-Flame load.
 
 **Live-Flame status:** ✅ **done for everything uploaded.** A Pixel Expression node update
 (PR245, 2026-07-07) changed the save-file format, so the whole library was regenerated to the
 new format and re-verified from scratch; that pass concluded with the **2026-07-22 Logik Portal
-upload — all 111 setups in `Uploaded to Logik-Portal/` are verified to work in Flame 2027.1**. The 45 in
-`WORK IN PROGRESS/` pass the validator and offline GLSL compile-check (as do all 156) but weren't
+upload — all 112 setups in `Uploaded to Logik-Portal/` are verified to work in Flame 2027.1** (111 in the
+original upload, plus `despill_blue`, built and verified by the user in Flame on 2026-07-23). The 45 in
+`WORK IN PROGRESS/` pass the validator and offline GLSL compile-check (as do all 157) but weren't
 uploaded, and two of them (`radial_ramp`, `palette_quantize`) carry 2026-07-21 bug-fixes that
 were never re-verified in Flame. Eval history: `documentation/live_flame_eval_progress.md`.
 
@@ -57,7 +58,7 @@ and reference docs under `documentation/`:
 
 ```
 setups/
-  Uploaded to Logik-Portal/     # 111 — verified in Flame 2027.1, on the Logik Portal
+  Uploaded to Logik-Portal/     # 112 — verified in Flame 2027.1, on the Logik Portal
     3d_position_tools/  animated_generators/  aov_tools/         color_grade/
     depth_tools/        diagnostics/          experimental/      hsv_color/
     just_for_fun/       matte_tools/          noise/             pattern_generator/
@@ -135,7 +136,7 @@ Two colours work exactly as in `pattern_generators/`: `aR/aG/aB` → `bR/bG/bB` 
 black→white). Defaults reproduce the original grayscale.
 
 ### `color_grade/` (split across `Uploaded to Logik-Portal/` and `WORK IN PROGRESS/`)
-**Uploaded:** `despill_green`, `voxelize`, `white_balance`, `lens_vignette`,
+**Uploaded:** `despill_green`, `despill_blue`, `voxelize`, `white_balance`, `lens_vignette`,
 `saturation_by_luma`, `highlight_desaturate`, `hue_preserving_clip`. **In
 `WORK IN PROGRESS/color_grade/`:** the basic grades (`saturation`, `exposure`, `contrast`,
 `lift_gamma_gain`), all the log-curve conversion pairs (sRGB / Cineon / LogC / ACEScct), and
@@ -144,6 +145,7 @@ black→white). Defaults reproduce the original grayscale.
 | File | Nuke origin | Inputs needed | Variables (defaults) |
 |------|-------------|---------------|----------------------|
 | `despill_green` | green despill | Front 1 | `spill` 1.0 (0=off) |
+| `despill_blue` | blue despill | Front 1 | `spill` 1.0 (0=off) |
 | `saturation` | saturation grade | Front 1 | `sat` 1.0 |
 | `voxelize` | posterize / quantize colour | Front 1 | `scale` 10.0 |
 | `exposure` | exposure in stops (×2^stops) | Front 1 | `stops` 0.0 |

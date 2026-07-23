@@ -577,6 +577,14 @@ SETUPS = [
          blue="b1", matte="m1",
          variables=[("spill", 1.0)]),
 
+    # Blue despill — the blue-screen twin of despill_green.
+    dict(name="despill_blue",
+         red="r1",
+         green="g1",
+         blue="mix(b1, min(b1, (r1 + g1) / 2.0), spill)",
+         matte="m1",
+         variables=[("spill", 1.0)]),
+
     # P-matte sphere — Front 1 = P-world pass (r=X,g=Y,b=Z). Output as RGB matte.
     dict(name="pmatte_sphere",
          red="clamp(1.0 - dist / prad, 0.0, 1.0)",
@@ -1899,6 +1907,7 @@ CATEGORY = {
     "noise_random": "pattern_generators",
     # Colour / grade
     "despill_green": "color_grade",
+    "despill_blue": "color_grade",
     "saturation": "color_grade",
     "voxelize": "color_grade",
     "exposure": "color_grade",
@@ -2112,6 +2121,9 @@ DOCS = {
     "despill_green": ("Reduces green where it exceeds the red/blue average; `spill` 0→1 sets strength.",
                       "Remove green-screen spill from a foreground.",
                       "Front 1"),
+    "despill_blue": ("Reduces blue where it exceeds the red/green average; `spill` 0→1 sets strength.",
+                     "Remove blue-screen spill from a foreground.",
+                     "Front 1"),
     "saturation": ("Scales saturation around luminance; `sat` 0=greyscale, 1=normal, >1=boosted.",
                    "Quick saturation tweak or full desaturate.",
                    "Front 1"),
@@ -2565,6 +2577,7 @@ EXPECTS = {
     "wave_sawtooth": _GEN, "pulse_rings": _GEN, "spin_rays": _GEN,
     # color_grade
     "despill_green": "your working space (keep consistent)",
+    "despill_blue": "your working space (keep consistent)",
     "saturation": "scene-linear (Rec.709 luma weights)",
     "voxelize": _ANY,
     "exposure": _LINEAR,
@@ -4489,8 +4502,18 @@ blue (`min(g, (r+b)/2)`), the standard suppression. `spill` blends from 0 (off) 
 ### Practical notes
 - Removes green contamination on edges and transmissive areas before/after keying; red and
   blue pass through untouched.
-- For a **blue** screen you'd suppress blue instead — that's a separate generated variant
-  (edit `generate_setups.py`, don't hand-edit the file).
+- For a **blue** screen use `despill_blue` instead.
+""",
+    "despill_blue": """
+## Notes
+
+**Blue-screen despill** — clamps the blue channel to no more than the average of red and
+green (`min(b, (r+g)/2)`), the standard suppression. `spill` blends from 0 (off) to 1 (full).
+
+### Practical notes
+- Removes blue contamination on edges and transmissive areas before/after keying; red and
+  green pass through untouched.
+- For a **green** screen use `despill_green` instead.
 """,
     "saturation": """
 ## Notes
