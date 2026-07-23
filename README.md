@@ -42,7 +42,9 @@ were never re-verified in Flame. Eval history: `documentation/live_flame_eval_pr
 
 Every setup also has a companion `<name>.md` next to it with **What it does / Use case /
 Inputs / Expects (colour space) / Variables** — generated from the same script, so the
-docs can't drift from the setups.
+docs can't drift from the setups. Setups whose result isn't self-evident on load (all of
+`WORK IN PROGRESS/`) additionally end with a **"Quick test"** block: exact wiring, exact
+values, and what a working result looks like.
 
 See `documentation/flame_pixel_expression_file_format.md` for the file format and
 `documentation/flame_pixel_expression_translations.md` for the Nuke→Flame GLSL mapping.

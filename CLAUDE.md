@@ -39,6 +39,10 @@ status — **this layout is hand-managed by the user; do not "fix" it back to fl
   `.md`) wherever it currently lives. Only a brand-new setup falls back to
   `setups/<category>/` — sort it into `Uploaded to Logik-Portal`/`WORK IN PROGRESS` by hand (ask the user
   where it belongs). Regeneration is verified byte-identical against the uploaded files.
+- **`setups/_READY_FOR_LOGIK/`** — the user's staging area for the **next Portal upload
+  batch** (currently just an empty `for_fun/` scaffold). Empty folders are invisible to git,
+  so it won't appear on GitHub until a setup lands in it; once one does, the in-place
+  generator will regenerate it there like anywhere else. User-managed — leave it alone.
 
 ## Commands
 Generator + validator are pure-stdlib Python 3 — no deps, no venv, no install step.
@@ -82,7 +86,10 @@ files and their companion `.md` docs are generated from it.
 - Add/change a setup → edit the `SETUPS` list, then add its `CATEGORY`, `DOCS`, and
   `EXPECTS` entries (the script warns if `DOCS`/`EXPECTS` are missing). Optionally add a
   `NOTES` entry — long-form Markdown appended to the setup's `.md` under a `## Notes`
-  heading (workflow, recipes, gotchas); all 156 setups currently have one. A **brand-new**
+  heading (workflow, recipes, gotchas); all 156 setups currently have one. Also add a
+  `QUICK_TEST` entry (rendered as a `### Quick test` block at the end of the Notes) whenever
+  a setup's working result isn't self-evident on load — exact wiring, exact values, what you
+  should see; all 45 `WORK IN PROGRESS/` setups have one. A **brand-new**
   setup is written to the `setups/<category>/` fallback — move it into `Uploaded to Logik-Portal/` or
   `WORK IN PROGRESS/` by hand (the user decides which; existing setups regenerate in place).
 - Regenerate: `python3 tools/generate_setups.py`
@@ -95,7 +102,8 @@ files and their companion `.md` docs are generated from it.
   generator and is almost never right.
 
 ## Key files
-- `tools/generate_setups.py` — generator (SETUPS + CATEGORY + DOCS + EXPECTS + NOTES tables).
+- `tools/generate_setups.py` — generator (SETUPS + CATEGORY + DOCS + EXPECTS + NOTES +
+  QUICK_TEST tables).
 - `tools/validate_setups.py` — static checker.
 - `tools/glsl_compile_check.py` — optional offline GLSL compile-check (`glslangValidator`); a
   pre-Flame gate for real compile errors. Not stdlib-only — needs `brew install glslang`.
@@ -278,14 +286,16 @@ the library — so if you edit one, they're the most likely to need a fresh live
   usually means an unescaped `<`/`>`, a reserved name (a built-in `uv`/`x`/`y`/`width`/`height`/
   `centre`/`E`/`PI` or input `r1`… used as a variable/formula — the validator catches this), or a
   format drift from the generator.
-- **Outstanding next steps (nothing blocking):** the eval is done. Possible future work:
-  (1) promote `WORK IN PROGRESS/` setups to the Portal if the user changes their mind — if
-  `radial_ramp` or `palette_quantize` are promoted, re-verify them VISUALLY first (their
-  2026-07-21 bug-fixes were never eyeballed in Flame; the tracker's bug-fix section says what
-  to look for); (2) new setups from `documentation/setup_expansion_backlog.md` — Tiers 1–4 are
-  done; only the Deferred / flagged items (and the `digital_counter` alphanumeric idea) remain.
-  A new setup lands in the `setups/<category>/` fallback — the user sorts it into the layout
-  and decides whether it gets uploaded. `/sync-docs` still reconciles counts/status.
+- **Outstanding next steps (nothing blocking):**
+  (1) **Work through `WORK IN PROGRESS/` with the new "### Quick test" recipes** — each `.md`
+  now says exactly how to wire, what to set, and what a pass looks like. Setups that pass can
+  be promoted (the user stages upload batches in `setups/_READY_FOR_LOGIK/`); `radial_ramp`
+  and `palette_quantize` must pass their ⚠-flagged visual checks first (2026-07-21 bug-fixes,
+  never eyeballed in Flame). (2) New setups from `documentation/setup_expansion_backlog.md` —
+  Tiers 1–4 are done; only the Deferred / flagged items (and the `digital_counter`
+  alphanumeric idea) remain. A new setup lands in the `setups/<category>/` fallback — the
+  user sorts it into the layout and decides whether it gets uploaded. `/sync-docs` still
+  reconciles counts/status.
 - **Known accepted limitations (2026-07-21 review — deliberate wontfixes, don't re-litigate):**
   `voronoi_manhattan`'s 3×3 neighbourhood is insufficient for the Manhattan metric on ~0.02% of
   pixels (a 5×5 gather would ~triple the expression length — accepted); `split_tone`'s tint isn't
