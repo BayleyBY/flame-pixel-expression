@@ -47,10 +47,15 @@ status — **this layout is hand-managed by the user; do not "fix" it back to fl
   built it in Flame by modifying `despill_green` and verified it, then it was integrated into
   the generator and regenerated in place in `Uploaded to Logik-Portal/color_grade/` (the
   regenerated file differs from the user's Flame save only by whitespace in one expression).
+- **`hsv_grade` (added 2026-07-23, in the `setups/hsv_color/` FALLBACK — not yet sorted or
+  Flame-verified)** — grades HSV-ENCODED data between `rgb_to_hsv` and `hsv_to_rgb`
+  (wrapping `hueShift`, `satGain`/`satGamma`, `valGain`/`valGamma`; neutral defaults). Built
+  to demonstrate mid-sandwich HSV work; it has a Quick test and a `DEPENDS` entry. The user
+  decides where it lands in the layout and whether it's uploaded.
 
 ## Commands
 Generator + validator are pure-stdlib Python 3 — no deps, no venv, no install step.
-- `python3 tools/generate_setups.py` — regenerate all 157 `.pixel_expression_node` files +
+- `python3 tools/generate_setups.py` — regenerate all 158 `.pixel_expression_node` files +
   companion `.md` docs from the generator. Run after any edit to `tools/generate_setups.py`.
 - `python3 tools/validate_setups.py` — static-check every generated setup. Must be **0
   errors** (ERRORS: reserved-name collisions, undefined identifiers, unbalanced/mis-nested
@@ -85,12 +90,12 @@ history at commit `9b056db` or earlier if a format question ever needs ground tr
   2027.1. History lives in `documentation/live_flame_eval_progress.md`.
 
 ## Golden rule: never hand-edit the setup files
-`tools/generate_setups.py` is the **single source of truth**. All 157 `.pixel_expression_node`
+`tools/generate_setups.py` is the **single source of truth**. All 158 `.pixel_expression_node`
 files and their companion `.md` docs are generated from it.
 - Add/change a setup → edit the `SETUPS` list, then add its `CATEGORY`, `DOCS`, and
   `EXPECTS` entries (the script warns if `DOCS`/`EXPECTS` are missing). Optionally add a
   `NOTES` entry — long-form Markdown appended to the setup's `.md` under a `## Notes`
-  heading (workflow, recipes, gotchas); all 157 setups currently have one. Also add a
+  heading (workflow, recipes, gotchas); all 158 setups currently have one. Also add a
   `QUICK_TEST` entry (rendered as a `### Quick test` block at the end of the Notes) whenever
   a setup's working result isn't self-evident on load — exact wiring, exact values, what you
   should see; all 45 `WORK IN PROGRESS/` setups have one. A **brand-new**
@@ -114,9 +119,10 @@ files and their companion `.md` docs are generated from it.
 - `.claude/commands/sync-docs.md` — the `/sync-docs` project command (regenerate, validate,
   drift-check, and sync counts + Live-Flame status across the hand-maintained docs).
 - `README.md` — human index (per-folder tables, colour-management, caveats).
-- `setups/` — the 157 generated `.pixel_expression_node` files + companion `.md` docs, split
+- `setups/` — the 158 generated `.pixel_expression_node` files + companion `.md` docs, split
   by publication status: `Uploaded to Logik-Portal/` (112, verified in Flame 2027.1, on the Logik Portal, 16
-  category subfolders) and `WORK IN PROGRESS/` (45 held back). See "Library layout" above.
+  category subfolders) and `WORK IN PROGRESS/` (45 held back), plus `hsv_color/` (fallback —
+  holds the new unsorted `hsv_grade`). See "Library layout" above.
 - `documentation/pixelexpression1.pixel_expression_node` — a real Flame-saved file kept as a
   worked example of the **old pre-PR245** serialization (the original format doc was
   reverse-engineered from it; it no longer loads in the updated node — do NOT delete it. The
@@ -223,11 +229,13 @@ seven-segment builders `_seven_seg_expr()`/`_seg_bar()`/`_seg_eq()` + `_SEG_ON`/
 `_LUMA01`; and the `DEPENDS`/`_dep()` machinery that renders each setup's node-dependency
 section. `stylization/` setups are collected in a `_STYLIZATION` list appended to `SETUPS`.
 
-## Folders (157 setups, all under `setups/`)
+## Folders (158 setups, all under `setups/`)
 **`Uploaded to Logik-Portal/` (112 — verified in Flame 2027.1, published to the Logik Portal):**
 `3d_position_tools` `animated_generators` `aov_tools` `color_grade` `depth_tools`
 `diagnostics` `experimental` `hsv_color` `just_for_fun` `matte_tools` `noise`
 `pattern_generator` `shapes` `stmap_generators` `stylize` `utility`
+
+**`hsv_color/` (1 — the new-setup fallback; awaiting the user's sort):** `hsv_grade`
 
 **`WORK IN PROGRESS/` (45 — held back; every `.md` here has a "### Quick test" recipe):**
 `color_grade` `depth_tools` `hsv_color` `matte_combine` `noise` `optics_physics`
@@ -270,9 +278,9 @@ the library — so if you edit one, they're the most likely to need a fresh live
   `.md`s now ends with a **"### Quick test"** recipe. The only bug-fixed setups never
   re-verified in Flame are `radial_ramp` and `palette_quantize` (their Quick tests say
   exactly what to confirm).
-- **All 157 pass the offline checkers** (both recalibrated for the new format):
+- **All 158 pass the offline checkers** (both recalibrated for the new format):
   `tools/validate_setups.py` → 0 errors/0 warnings, and `tools/glsl_compile_check.py`
-  (`glslangValidator`, `#version 410 core`) → 157 compile. A clean compile is strong evidence a
+  (`glslangValidator`, `#version 410 core`) → 158 compile. A clean compile is strong evidence a
   setup will load, but can't confirm Flame's exact dialect/expression-length acceptance, OutMatte
   wiring, or visual correctness — do a real load before fully trusting.
 - **History/lessons (still apply):**

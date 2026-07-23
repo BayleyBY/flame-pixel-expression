@@ -1,6 +1,6 @@
 # Pixel Expression Setup Library
 
-**157 ready-to-load `.pixel_expression_node` setups** translating the best Nuke expression
+**158 ready-to-load `.pixel_expression_node` setups** translating the best Nuke expression
 examples to Flame GLSL, plus **unconventional / experimental / utility** setups (fractals,
 ST-map generators, painted control surfaces, stylization, optics/physics, diagnostics).
 Load via the node's setup browser. **Connect inputs in Batch** — wiring isn't stored in these
@@ -26,10 +26,10 @@ Tooling (in `tools/`):
   `Uploaded to Logik-Portal`/`WORK IN PROGRESS` layout survives a regenerate.
 - `tools/validate_setups.py` — sanity sweep: XML well-formedness, slot counts, balanced parens,
   reserved-name collisions, and undefined-identifier checks (catches variable typos).
-  Run after any edit; current status: **157 setups, 0 errors, 0 warnings**.
+  Run after any edit; current status: **158 setups, 0 errors, 0 warnings**.
 - `tools/glsl_compile_check.py` — optional pre-Flame gate: compiles every setup's GLSL with
   `glslangValidator` (`brew install glslang`) to catch real compile errors the static checker
-  can't. Current status: **all 157 compile, 0 errors**. A proxy for — not a replacement for — a
+  can't. Current status: **all 158 compile, 0 errors**. A proxy for — not a replacement for — a
   real in-Flame load.
 
 **Live-Flame status:** ✅ **done for everything uploaded.** A Pixel Expression node update
@@ -37,7 +37,7 @@ Tooling (in `tools/`):
 new format and re-verified from scratch; that pass concluded with the **2026-07-22 Logik Portal
 upload — all 112 setups in `Uploaded to Logik-Portal/` are verified to work in Flame 2027.1** (111 in the
 original upload, plus `despill_blue`, built and verified by the user in Flame on 2026-07-23). The 45 in
-`WORK IN PROGRESS/` pass the validator and offline GLSL compile-check (as do all 157) but weren't
+`WORK IN PROGRESS/` pass the validator and offline GLSL compile-check (as do all 158) but weren't
 uploaded, and two of them (`radial_ramp`, `palette_quantize`) carry 2026-07-21 bug-fixes that
 were never re-verified in Flame. Eval history: `documentation/live_flame_eval_progress.md`.
 
@@ -303,13 +303,17 @@ to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
 (outer edge stays fixed). `sdf_circle` → use `sdf_ring` for the hollow version.
 
 ### `hsv_color/` (split across `Uploaded to Logik-Portal/` and `WORK IN PROGRESS/`)
-**In `WORK IN PROGRESS/hsv_color/`:** `chroma_key`, `sat_matte`. The rest are uploaded. Note
-**`color_replace` was renamed `hsv_color_replace`** for the Portal upload.
+**In `WORK IN PROGRESS/hsv_color/`:** `chroma_key`, `sat_matte`. **New, not yet sorted or
+Flame-verified (in the `setups/hsv_color/` fallback):** `hsv_grade` — grades the HSV-encoded
+data *between* `rgb_to_hsv` and `hsv_to_rgb` (its Quick test says how to wire the sandwich).
+The rest are uploaded. Note **`color_replace` was renamed `hsv_color_replace`** for the
+Portal upload.
 
 | File | Use | Inputs needed | Variables (defaults) |
 |------|-----|---------------|----------------------|
 | `rgb_to_hsv` | RGB → HSV (H,S,V on R,G,B) | Front 1 | — |
 | `hsv_to_rgb` | HSV → RGB | Front 1 = HSV | — |
+| `hsv_grade` | hue/sat/value grade on HSV data (mid-sandwich) | Front 1 = HSV (from `rgb_to_hsv`) | `hueShift` 0.0, `satGain` 1.0, `satGamma` 1.0, `valGain` 1.0, `valGamma` 1.0 |
 | `hue_rotate` | luma-preserving hue shift | Front 1 | `hue` 0.0 |
 | `chroma_key` | matte by hue + min saturation | Front 1 | `keyHue` 0.33, `tol` 0.05, `soft` 0.05, `satMin` 0.15 |
 | `hsv_color_replace` | recolour one hue range | Front 1 | `srcHue` 0.33, `dstHue` 0.0, `tol` 0.06, `soft` 0.05 |

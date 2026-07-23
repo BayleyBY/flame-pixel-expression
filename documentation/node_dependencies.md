@@ -65,6 +65,7 @@ about the Pixel Expression node make these dependencies easy to get wrong:
 | `dual_output_depth` | control_surfaces | beauty + depth on Matte 1 | (matte → comp) |
 | `hsv_to_rgb` | hsv_color | **HSV-encoded** input (usually from `rgb_to_hsv`) | — |
 | `rgb_to_hsv` | hsv_color | — | a node that reads HSV / `hsv_to_rgb` |
+| `hsv_grade` | hsv_color | **HSV-encoded** input (from `rgb_to_hsv`) | **`hsv_to_rgb`** (output is HSV data) |
 | `srgb_to_linear` ↔ `linear_to_srgb` | color_grade | (each is the other's inverse) | bracket linear-only ops |
 
 Everything not listed here is self-contained (a plate or matte in, a finished result out).
@@ -242,6 +243,11 @@ Cryptomatte) wired to a specific input. Plug in the wrong pass and they fail sil
 - **`rgb_to_hsv` ↔ `hsv_to_rgb`** — `hsv_to_rgb` expects an **HSV-encoded** image, which in
   practice comes from `rgb_to_hsv` (or another HSV source) upstream. Use them to bracket a
   hand-built HSV operation when one of the dedicated `hsv_color/` setups doesn't fit.
+  `hsv_grade` is the library's ready-made middle for this sandwich
+  (`rgb_to_hsv` → `hsv_grade` → `hsv_to_rgb`): wrapping hue shift, saturation gain + gamma,
+  value gain + gamma, all on the raw H/S/V channels. Its S output is clamped to 0..1 (an
+  over-range S makes the decode extrapolate to negative RGB); V is left unclamped, so follow
+  the sandwich with `hue_preserving_clip` for a delivery clamp.
 - **`srgb_to_linear` ↔ `linear_to_srgb`** — an encode/decode pair. Reach for them only when you
   *can't* use a proper OCIO/colour-management node; they're a convenience, not a replacement
   for your colour pipeline.

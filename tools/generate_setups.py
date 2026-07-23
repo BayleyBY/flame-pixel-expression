@@ -1087,6 +1087,17 @@ SETUPS = [
          matte="m1",
          formulas=[("pp", "abs(fract(vec3(r1) + vec3(1.0, 0.6666667, 0.3333333)) * 6.0 - 3.0)", 2)]),
 
+    # HSV-space grade — operates on HSV-ENCODED data (H,S,V in R,G,B) between
+    # rgb_to_hsv and hsv_to_rgb. Neutral defaults = pass-through. S is clamped so the
+    # downstream decode can't extrapolate to negative RGB; V is left open for over-range.
+    dict(name="hsv_grade",
+         red="fract(r1 + hueShift)",
+         green="clamp(pow(max(g1, 0.0), satGamma) * satGain, 0.0, 1.0)",
+         blue="pow(max(b1, 0.0), valGamma) * valGain",
+         matte="m1",
+         variables=[("hueShift", 0), ("satGain", 1.0), ("satGamma", 1.0),
+                    ("valGain", 1.0), ("valGamma", 1.0)]),
+
     # Hue rotate — luma-preserving rotation matrix; `hue` 0..1 = full turn. Front 1.
     dict(name="hue_rotate",
          red=_HROT_R, green=_HROT_G, blue=_HROT_B,
@@ -1964,7 +1975,8 @@ CATEGORY = {
     "sdf_rounded_box": "sdf_shapes", "sdf_ring": "sdf_shapes",
     "sdf_polygon": "sdf_shapes",
     # HSV / chroma
-    "rgb_to_hsv": "hsv_color", "hsv_to_rgb": "hsv_color", "hue_rotate": "hsv_color",
+    "rgb_to_hsv": "hsv_color", "hsv_to_rgb": "hsv_color", "hsv_grade": "hsv_color",
+    "hue_rotate": "hsv_color",
     "chroma_key": "hsv_color", "color_replace": "hsv_color",
     "vibrance": "hsv_color", "hsl_targeted": "hsv_color", "split_tone": "hsv_color",
     "sat_matte": "hsv_color",
@@ -2242,6 +2254,9 @@ DOCS = {
                    "Inspect or feed hue/sat/value into other tools.", "Front 1"),
     "hsv_to_rgb": ("Converts HSV (on Front 1 RGB) back to RGB.",
                    "Reconstruct colour after manipulating HSV channels.", "Front 1 = HSV"),
+    "hsv_grade": ("Grades HSV-ENCODED data: wrapping `hueShift`, sat gain + gamma, value gain + gamma.",
+                  "Edit hue/sat/value directly between `rgb_to_hsv` and `hsv_to_rgb` — sat gamma has no RGB-space equivalent.",
+                  "Front 1 = HSV (from `rgb_to_hsv`)"),
     "hue_rotate": ("Luma-preserving hue rotation; `hue` 0..1 = full turn.",
                    "Shift colours without changing brightness.", "Front 1"),
     "chroma_key": ("Matte from hue distance to `keyHue` with a `satMin` floor.",
@@ -2616,6 +2631,7 @@ EXPECTS = {
     # hsv_color
     "rgb_to_hsv": "any (operates on the RGB values as given)",
     "hsv_to_rgb": "HSV data in → RGB out",
+    "hsv_grade": "HSV data in → HSV data out (bracket with `rgb_to_hsv` … `hsv_to_rgb`)",
     "hue_rotate": "any (operates on the RGB values as given)",
     "chroma_key": "your working/display space (hue-based)",
     "color_replace": "your working/display space (hue-based)",
@@ -4564,6 +4580,35 @@ green, V on blue**.
   outside 0..1 are fine.
 - Feed it the output of `rgb_to_hsv` after you've graded the H/S/V channels.
 """,
+    "hsv_grade": """
+## Notes
+
+**A grade that runs INSIDE the HSV sandwich** — this node expects **HSV-encoded** data
+(H on red, S on green, V on blue, i.e. the output of `rgb_to_hsv`), not a picture. It exists
+to demonstrate what becomes trivial once hue/sat/value are ordinary channels:
+
+- `hueShift` — **additive hue rotation that wraps for free** (`fract`, matching the decoder):
+  0.5 flips every colour to its complement, small values nudge a cast around the wheel.
+- `satGain` × `satGamma` — gain scales saturation; **gamma contours it**: `satGamma` > 1
+  drains weakly-coloured pixels to grey while fully-saturated ones keep their punch
+  (a per-pixel "saturation soft-knee" with no RGB-space equivalent — `vibrance` is the
+  closest single-node cousin).
+- `valGain` × `valGamma` — a brightness gain + gamma applied to V only, so hue and
+  saturation are mathematically untouched (unlike an RGB gamma, which shifts saturation).
+
+Neutral defaults (`hueShift` 0 / gains and gammas 1) make it a pass-through.
+
+### Practical notes
+- S is clamped to 0..1 on output — over-range saturation would make `hsv_to_rgb`
+  extrapolate to negative RGB. V is deliberately NOT clamped (over-range highlights
+  survive the round-trip); add `hue_preserving_clip` after the sandwich for delivery.
+- Viewed directly (without `hsv_to_rgb` downstream) the output looks like false-colour
+  data — that's correct.
+- For a one-node version of the common cases, the dedicated `hsv_color/` tools
+  (`hue_rotate`, `vibrance`, `hsl_targeted`…) do their own decode internally; reach for
+  the sandwich when you want ops they don't offer, or several HSV edits paying the
+  decode cost once.
+""",
     "hue_rotate": """
 ## Notes
 
@@ -5567,6 +5612,10 @@ DEPENDS = {
     "hsv_to_rgb": _dep("HSV source (e.g. `rgb_to_hsv`) → **this node**",
                        "Expects an **HSV-encoded** input, which in practice comes from "
                        "`rgb_to_hsv` (or another HSV source) upstream."),
+    "hsv_grade": _dep("`rgb_to_hsv` → **this node** → `hsv_to_rgb`",
+                      "Operates on an **HSV-encoded** image (H,S,V in R,G,B) — it is the "
+                      "middle of the decode → modify → encode sandwich and produces HSV "
+                      "data, not a picture. Both bracket nodes are required."),
     "srgb_to_linear": _dep("display-encoded sRGB → **this node** → linear-only ops → `linear_to_srgb`",
                            "Decode half of an **encode/decode pair**: bracket linear-domain maths "
                            "(exposure, merges, light math) between this and **`linear_to_srgb`**. "
@@ -5613,6 +5662,14 @@ def _fmt_vars(variables):
 # neutral-default / missing-second-input traps, not bugs. Add an entry for any
 # setup whose result isn't self-evident on load.
 QUICK_TEST = {
+    # ── hsv_color (sandwich demo) ──
+    "hsv_grade": """
+Wire a colourful clip → `rgb_to_hsv` → **this node** → `hsv_to_rgb` (Front 1 each time).
+With the defaults the chain output matches the source exactly (pass-through). Set
+`hueShift` 0.5 → **every colour flips to its complement** (reds↔cyans, greens↔magentas).
+Back to 0, set `satGamma` 3.0 → **pale/washed areas drain to grey while strongly-coloured
+areas keep their punch**. Viewing this node's own output (no `hsv_to_rgb`) shows
+false-colour HSV data — that's correct, not a bug.""",
     # ── loose files ──
     "box_matte": """
 No P pass needed: wire the `stmap` setup's output into **Front 1** (fake position pass).
