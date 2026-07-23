@@ -149,6 +149,19 @@ files and their companion `.md` docs are generated from it.
 - `documentation/flame_feature_showcase_setup.md` — recipe for a hand-built setup that
   exercises every node feature (front blend, vignette, sat/gamma, ring×ray matte).
 - `documentation/PixelExpression.txt` — Foundry/Autodesk node docs (node intro).
+- `demo_images/` — test assets for demonstrating/verifying setups in Flame (2026-07-23). Its
+  `README.md` is the guide: `aov_demo_render.exr` (gitignored, 87 MB — regenerate with
+  `render_aov_exr.py`; 18 layers incl. diffuse_direct/indirect split, real 2-rank Cryptomatte
+  with MurmurHash3 ids in `aov_demo_manifest.txt`), exact beauty-rebuild wirings, and
+  `stmap_demos/` (per-tool map+result reference pairs for every ST-map generator, built with
+  the exact GLSL math — Flame's STMap output should match the `_result.png`s).
+  `AOV_Tools_Demo.txt` is the user's saved walkthrough copy (overlaps README).
+- `STATUS.md` — hand-maintained project status dashboard (counts, pending verifications,
+  recent changes). Update it alongside CLAUDE.md/README when the library state changes —
+  `/sync-docs` does NOT manage it.
+- `flame_batch_demo/` — the user's untracked Flame Batch exports (user-managed; note the
+  `.gitignore` only covers `*.pixel_expression_node.p`, so `.batch.p` files would be swept
+  into a blanket `git add`).
 
 ## File format facts (the non-obvious ones)
 - Single-line XML: `<Setup><Base>…</Base><State>…</State></Setup>`.
@@ -291,6 +304,13 @@ the library — so if you edit one, they're the most likely to need a fresh live
   setup will load, but can't confirm Flame's exact dialect/expression-length acceptance, OutMatte
   wiring, or visual correctness — do a real load before fully trusting.
 - **History/lessons (still apply):**
+  - **ST-map lessons (2026-07-23, from the user's live STMap tests):** a 16f half-float map
+    quantizes UV at HD (~0.0005 step near 0.5 = a full pixel) → "correct but soft" results;
+    keep maps **32-bit float end-to-end**. The STMap sampler is generic bilinear — prefer a
+    2D Transform for pure affine moves. One `chromatic_aberration_map` on the whole plate
+    reads as a uniform zoom, NOT CA — it needs the two-map/per-channel workflow. All captured
+    in the shared `_STMAP_NOTE` tail (appended to all 11 UV-map emitters' NOTES in the
+    generator) and points 5/6 of `node_dependencies.md`'s STMap checklist.
   - `hsl_targeted` first failed to load because it declared a variable `width` (collides with the
     injected built-in). The validator flags ANY var/formula shadowing a built-in/input — re-run it
     after edits.
@@ -306,6 +326,9 @@ the library — so if you edit one, they're the most likely to need a fresh live
   `centre`/`E`/`PI` or input `r1`… used as a variable/formula — the validator catches this), or a
   format drift from the generator.
 - **Outstanding next steps (nothing blocking):**
+  (0) **Re-verify the 4-wide `channel_pack`/`channel_unpack` in Flame** (Quick tests in their
+  `.md`s), then the user's next Portal batch: the pair's update + `hsv_grade` (staged in
+  `_READY_FOR_LOGIK/`).
   (1) **Work through `WORK IN PROGRESS/` with the new "### Quick test" recipes** — each `.md`
   now says exactly how to wire, what to set, and what a pass looks like. Setups that pass can
   be promoted (the user stages upload batches in `setups/_READY_FOR_LOGIK/`); `radial_ramp`
