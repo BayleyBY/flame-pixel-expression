@@ -99,6 +99,15 @@ gather the Pixel Expression node can't do) is where the warp actually happens.
 4. The map should match the working **resolution/aspect**; these generators normalise by
    width/height so they're resolution-independent, but the STMap and source should agree on
    format.
+5. **Keep the map 32-bit float end-to-end** (live-Flame lesson, 2026-07-23). UV coordinates
+   need sub-pixel precision: at 1920 wide, adjacent pixels differ by ~0.0005 in U — the
+   entire resolution of a 16-bit half float near 0.5. A 16f (or integer) map costs up to a
+   full pixel of positional error and the warp comes back "correct but soft".
+6. **Mind the sampler.** The STMap's resampling is generic (typically bilinear) — visibly
+   softer than a Transform node's high-quality filters on plain scaling. For pure affine
+   moves (unsqueeze, zoom/pan) prefer Transform/Resize; an ST map earns its keep for
+   non-uniform warps, or when several UV operations compose into ONE map so the footage is
+   resampled only once.
 
 ### Per-setup notes
 
@@ -126,7 +135,11 @@ gather the Pixel Expression node can't do) is where the warp actually happens.
   magnitude** in blue. Two ways to use it:
   - **Per-channel STMap:** generate the map three times (red as-is; a green variant with
     `amount = 0`; a blue variant with `-amount`), STMap each colour channel of the plate
-    separately, then recombine. Gives true R/G/B divergence.
+    separately, then recombine. Gives true R/G/B divergence. (Green is the identity, so in
+    practice: two maps, two STMaps, green straight from the plate. Recombine = two small
+    Pixel Expression nodes: A takes `red = r1`/`green = g2` from red-warp + plate; B takes
+    A's `r1 g1` + `blue = b2` from blue-warp.) **One map on the whole plate is NOT CA** —
+    all channels move together and it reads as a slight uniform zoom.
   - **Defringe input:** feed the blue (offset magnitude) into a downstream defringe/chroma
     node as its strength map. Simpler, approximate.
 - **`st_uv_map_inspector`** (diagnostics) — the QC *consumer* for this whole class: wire any

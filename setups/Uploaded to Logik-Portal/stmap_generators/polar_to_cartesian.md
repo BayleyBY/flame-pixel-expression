@@ -38,3 +38,13 @@ mirror-ball / 360-reframe** unwrap-rewrap.
 - **`twist`** rotates the angular axis (radians) — spins the planet.
 - **`zoom`** scales the radius — `>1` pulls the horizon in, `<1` pushes it out.
 - Aspect-corrected (Y normalised by height/width) so the circle stays round at any res.
+
+### ST-map precision (live-Flame lesson, 2026-07-23)
+- **Keep the map 32-bit float end-to-end.** UV coordinates need sub-pixel precision: at
+  1920 wide, adjacent pixels differ by ~0.0005 in U — the entire resolution of a 16-bit
+  half float near 0.5. A 16f (or integer) map costs up to a full pixel of positional error
+  and the warp comes back "correct but soft". No resize/filter/colour management on the map.
+- **The STMap's sampler is generic** (typically bilinear) — visibly softer than a Transform
+  node's high-quality filters on plain scaling. Prefer Transform/Resize for pure affine
+  moves; an ST map earns its keep for non-uniform warps, or when several UV operations are
+  composed into ONE map so the footage is resampled only once.
