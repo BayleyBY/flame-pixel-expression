@@ -2,8 +2,9 @@
 
 Originally reverse-engineered from `pixelexpression1.pixel_expression_node` (kept in this
 folder as the old worked example; Flame 2027.1, Version `21.020000`), then **updated for the
-PR245 node change** (2026-07-07) against fresh Flame saves in `PR245/`
-(`color_blindness_pr245`, `alpha_fringe_pr245`, `radial_ramp_animated_pr245`). The file is a
+PR245 node change** (2026-07-07) against fresh Flame saves (`color_blindness_pr245`,
+`alpha_fringe_pr245`, `radial_ramp_animated_pr245` — PR-test files since deleted; recover
+from git history at commit `9b056db` if ever needed). The file is a
 **single-line XML** document. A sibling `<name>.pixel_expression_node.p` is just a proxy
 thumbnail for the media browser — ignore it when authoring.
 

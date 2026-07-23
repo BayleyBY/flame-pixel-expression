@@ -61,9 +61,11 @@ each time (no single-setup flag) — a full run takes seconds, so there's nothin
 
 ## ⚠️ Node format changed (PR245, 2026-07-07) — library regenerated, eval reset
 A Pixel Expression node update **changed the save-file XML structure**, so every old-format setup
-silently failed to load. The format was re-reverse-engineered from fresh Flame saves (kept in
-`PR245/`), the generator + both checker tools were updated, and **all 156 setups were regenerated
-to the new format**. See "File format facts" and "Live-Flame status" below for the delta.
+silently failed to load. The format was re-reverse-engineered from fresh Flame saves, the
+generator + both checker tools were updated, and **all 156 setups were regenerated to the new
+format**. See "File format facts" and "Live-Flame status" below for the delta. (The reference
+saves lived in a `PR245/` folder, deleted 2026-07-22 as PR-test leftovers — recoverable from git
+history at commit `9b056db` or earlier if a format question ever needs ground truth again.)
 - **Regeneration is safe.** The layout is no longer flat (see "Library layout" above), but the
   generator writes each setup **in place** at its current on-disk location, so
   `tools/generate_setups.py` remains the single source of truth with no duplication risk.
@@ -102,9 +104,10 @@ files and their companion `.md` docs are generated from it.
   category subfolders) and `WORK IN PROGRESS/` (45 held back). See "Library layout" above.
 - `documentation/pixelexpression1.pixel_expression_node` — a real Flame-saved file kept as a
   worked example of the **old pre-PR245** serialization (the original format doc was
-  reverse-engineered from it; it no longer loads in the updated node — the current-format
-  reference saves live in `PR245/`. Do NOT delete either). Its `.p` proxy thumbnail is
-  gitignored — Flame regenerates it on load.
+  reverse-engineered from it; it no longer loads in the updated node — do NOT delete it. The
+  *current-format* reference saves were PR-test files, deleted 2026-07-22; recover from git
+  history at `9b056db` if needed). Its `.p` proxy thumbnail is gitignored — Flame regenerates
+  it on load.
 - `documentation/flame_pixel_expression_file_format.md` — reverse-engineered file format.
 - `documentation/flame_pixel_expression_translations.md` — Nuke→Flame GLSL mapping.
 - `documentation/node_dependencies.md` — every setup that needs an upstream pass or a
@@ -262,7 +265,8 @@ the library — so if you edit one, they're the most likely to need a fresh live
     name-keyed list + adds `<…Declarations>` blocks, and both checker tools were reading the old
     flat `Variable0..7` slots (they reported everything undefined until updated). If load/compile
     tooling suddenly reports mass-undefined identifiers after a node update, suspect a format change
-    first — re-diff a fresh Flame save against `PR245/` using the method in `documentation/`.
+    first — save a fresh setup from the node and skeleton-diff it against a known-good library file
+    (method in `documentation/flame_pixel_expression_file_format.md`).
 - If the user reports a load/compile failure, fix the expression in `tools/generate_setups.py`
   and regenerate — never patch the `.pixel_expression_node` directly. A silent no-error load failure
   usually means an unescaped `<`/`>`, a reserved name (a built-in `uv`/`x`/`y`/`width`/`height`/

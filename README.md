@@ -65,8 +65,7 @@ setups/
                           normal_renormalize, position_range_remap)
 tools/         generate_setups.py  validate_setups.py  glsl_compile_check.py
 documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
-               pixelexpression1.pixel_expression_node (OLD pre-PR245 format example;
-               current-format reference saves are in PR245/)
+               pixelexpression1.pixel_expression_node (OLD pre-PR245 format example)
 ```
 
 ### `Uploaded to Logik-Portal/matte_tools/` (was `alpha_matte_tools/`)
