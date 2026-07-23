@@ -71,6 +71,33 @@ into a lighting AOV. Explicit names in the wild: *unoccluded diffuse*, `diffuse_
 "raw". Path tracers mostly don't have the concept: occlusion emerges inside
 `diffuse_indirect`.
 
+## stmap_demos/ — the ST-map generator category
+
+`stmap_demos.py` builds, for **every** `stmap_generators` setup (plus `stmap` and
+`uv_test_chart` from `utility/`), the UV map with the setup's exact GLSL math
+(bottom-up y, centre = image middle) and then applies it the way Flame's **STMap node**
+would (bilinear resample at `(U·W, V·H)`). Each tool gets `<name>_map.png` +
+`<name>_result.png`, summarised in `stmap_contact_sheet_1/2.png`.
+
+- **Sources:** `arch_base.png` (Nano Banana; rectilinear facade — straight lines make
+  warps legible) and `uv_test_chart.png` (built from that setup's own GLSL; used for
+  `lens_distort_map` so the grid curvature is obvious).
+- **Wiring being simulated:** generator → STMap **map/UV input**; plate → STMap
+  **front/source**. Maps are data — tag Raw/Data, no filtering.
+- **`chromatic_aberration_map`** uses its documented 3-instance workflow: `+amount`,
+  `0`, `−amount` maps, one STMap per colour channel, recombine (R sampled wide, B tight).
+- **`anamorphic_unsqueeze`**: `anamorphic_squeezed_source.png` is the 2:1-squeezed
+  input; the map restores it full-width (a 2× horizontal zoom about centre at fixed
+  resolution).
+- **CoC tools** use the AOV EXR's real `depth.Z` on Matte 1 (focus 6.5 = sphere
+  distance) and a 6-level variable-blur preview standing in for Flame's Defocus/blur.
+  The pair's difference is the lesson: `coc_from_depth` is an artistic ramp (dramatic),
+  `thin_lens_coc` at f/2.8 · 50 mm · `blurScale` 1000 is physically calibrated (subtle —
+  raise `blurScale` for drama).
+- **Caveat:** `heat_haze_map`/`glitch_block_map` use an equivalent (not bit-identical)
+  value-noise/hash — GLSL hash constants differ; lattice, octaves and ranges match, so
+  Flame's result will differ in pattern detail but not in character.
+
 ## Other demos from this EXR
 
 - **`screen_merge`** (`screen_merge_demo.png`): base = `diffuse` + `specular`, glow =
