@@ -20,3 +20,8 @@ falloff.
 This is **not a blur** — the node can't gather neighbours, so it cannot create edge width where
 none exists. It can only *reshape* the soft transition a matte already has (an anti-aliased or
 keyed edge). For a true grow/shrink/blur, use a real blur node downstream. Result on RGB + Matte.
+
+### Quick test
+Loads neutral (`lo` 0 / `hi` 1). Wire a SOFT matte into **Matte 1**, then pull `lo` 0.3 /
+`hi` 0.7 → the soft edge visibly **hardens/tightens**. It reshapes existing softness only —
+on a hard-edged matte nothing changes (it cannot blur; that needs a real blur node).

@@ -26,3 +26,8 @@ luminance-only look. **OutMatte carries the raw 0..1 pattern**, regardless of th
 - `radius` = falloff radius in px; `softness` 0 = hard-edged circle, 1 = smooth falloff all
   the way from centre. **Centre** positions it.
 - The go-to for vignettes, spotlight masks, and soft radial holdouts.
+
+### Quick test
+⚠ **Re-verify the 2026-07-21 fix:** set `softness` 0.0 → a **clean hard-edged circle with
+no speckle/sparkle on the rim** (the old bug). Normal load: soft white glow centred at the
+image middle, radius 600 px, raw ramp on OutMatte (Matte 1 wired).

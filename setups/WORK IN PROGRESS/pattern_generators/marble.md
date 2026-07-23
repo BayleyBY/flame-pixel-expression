@@ -18,3 +18,7 @@ value-noise **turbulence** so they swirl and fold like stone.
 - `freq` — vein spacing. `turb` — swirl amount (this is what makes it marble rather than stripes).
 - Default colours are pale-stone → dark-vein; two-colour, so dial any stone palette. Rotate the
   whole look by feeding it through a transform upstream, or pair with `cosine_palette`.
+
+### Quick test
+Any clip on **Front 1** → **veined pale-stone marble immediately**. Set `turb` 0 → straight
+bands (proves the turbulence is what makes it marble); crank `turb` 10 for heavy swirl.

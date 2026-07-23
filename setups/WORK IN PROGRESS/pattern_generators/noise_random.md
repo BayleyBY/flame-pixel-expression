@@ -24,3 +24,7 @@ cells) — use the `noise/` folder (`noise_value`, `noise_fbm`, `voronoi`), wher
 
 ### Practical notes
 - Uses: grain, dither, a random source to drive a dissolve/threshold. Tag it Raw/Data.
+
+### Quick test
+Any clip on **Front 1** → **per-pixel colour static** (R/G/B are independent hashes). It is
+IDENTICAL every frame by design — for animated noise use `noise/` with a keyframed `seed`.

@@ -32,3 +32,9 @@ on the undistorted plate → re-apply the distortion with `lens_distort` using t
   distort→undistort round-trip won't be pixel-exact — fine for most work, but match `k1`/`k2`
   carefully and check edges on a grid.
 - **Tag the output Raw/Data** and STMap it.
+
+### Quick test
+Round-trip test through your ST-map/UV-warp node: distort `uv_test_chart` with
+`lens_distort` (`k1` 0.2), then apply THIS map (same `k1`) in a second pass → **the grid
+comes back straight** (approximate inverse — far corners may be a pixel or two off, which
+is expected).

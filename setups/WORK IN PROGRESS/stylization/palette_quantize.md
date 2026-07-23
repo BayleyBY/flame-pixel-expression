@@ -39,3 +39,8 @@ between them.
   first, quantize last.
 - This is the tonal-ramp approach; for a *hue*-based limited palette, qualify with
   `chroma_key` / `hsl_targeted` upstream and quantize the regions separately.
+
+### Quick test
+⚠ **Re-verify the 2026-07-21 fix:** feed a plate with blown highlights (or gain one up ×4)
+→ the brightest areas must land EXACTLY on colour B (default white), never brighter (the
+old bug overshot past B). Normal load: instant 4-tone posterize of any clip.

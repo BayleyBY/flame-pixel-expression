@@ -27,3 +27,9 @@ denormalized — and relighting then reads wrong intensities. This divides each 
   convention that flips bump/normal lighting. Toggle it if your relight looks inverted.
 - **Expects normals in −1..1.** If yours are 0..1-encoded (common in EXRs), remap upstream
   (`×2−1`) first, per the library normal convention. **Tag Raw/Data.**
+
+### Quick test
+On a *healthy* normal pass the output looks IDENTICAL to the input — that is correct (it
+only fixes vector length). To see it act: set `flipG` 1.0 → **the green channel visibly
+inverts**. No normal pass handy? Wire `stmap` into Front 1 — the plain ramp visibly changes
+as each pixel is scaled to unit length.

@@ -31,3 +31,9 @@ image input. The node reads this mask per pixel to decide how much to defocus th
   defocus away from it (smaller = shallower DOF).
 - Symmetric — objects nearer *and* farther than focus both blur, as a real lens does.
 - Keyframe `focus` for a rack-focus pull.
+
+### Quick test
+Fake depth: `radial_ramp` output into **Matte 1** → **a black band (in focus) where the
+ramp crosses `focus` 0.5, white elsewhere**; slide `focus` 0→1 and the band sweeps across
+frame. Remember it outputs a blur-AMOUNT mask for a downstream variable-blur/Defocus — it
+never blurs by itself.

@@ -25,3 +25,9 @@ linearise before any light math (grades, merges, blurs) or the results are wrong
 ### Pairing
 Bracket film-log work with `cineon_to_linear` … *(do your linear ops)* … **`linear_to_cineon`**
 to round-trip back to DPX. **Expects** a Cineon-log input; tag the linear output scene-linear.
+
+### Quick test
+Feed a horizontal 0–1 ramp: output holds near 0 until input ≈ **0.093** (code 95 = blackPt
+→ 0.0) and reaches **1.0 at ≈ 0.67** (code 685 = whitePt), continuing into super-white
+above. On a real DPX/log plate: the milky log look snaps to contrasty linear with deep
+shadows.

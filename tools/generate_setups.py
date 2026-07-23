@@ -5582,6 +5582,208 @@ def _fmt_vars(variables):
     return "**Variables:** " + ", ".join(parts)
 
 
+# ── Quick-test recipes ────────────────────────────────────────────────────────
+# Rendered as a "### Quick test" block at the end of the setup's Notes: exact
+# wiring, exact values, and what a WORKING result looks like. Written for the
+# "WORK IN PROGRESS" setups (2026-07-22) after the user reported they either
+# didn't appear to work or couldn't be tested from the .md alone — most were
+# neutral-default / missing-second-input traps, not bugs. Add an entry for any
+# setup whose result isn't self-evident on load.
+QUICK_TEST = {
+    # ── loose files ──
+    "box_matte": """
+No P pass needed: wire the `stmap` setup's output into **Front 1** (fake position pass).
+Set `cenR` 0.5, `cenG` 0.5, `cenB` 0.0, `boxSize` 0.25 → **a soft white rectangle covering
+the middle of frame** (Result; OutMatte too once Matte 1 is wired). With the defaults
+(`cen` 0,0,0 / `boxSize` 1.0) the whole 0–1 stmap sits *inside* the box, so the frame reads
+solid white — that's correct, not a bug.""",
+    "id_isolate": """
+Beauty on **Front 1**, ANY high-contrast clip or matte on **Matte 1** (a `radial_ramp`
+render works). Set `tintR` 2.0, `tintG` 0.3, `tintB` 0.3 → **the masked region turns hot
+red**, everything else passes through untouched. With nothing on Matte 1 the mask reads 0
+and the node outputs the beauty bit-for-bit — the classic "it does nothing" trap.""",
+    "normal_renormalize": """
+On a *healthy* normal pass the output looks IDENTICAL to the input — that is correct (it
+only fixes vector length). To see it act: set `flipG` 1.0 → **the green channel visibly
+inverts**. No normal pass handy? Wire `stmap` into Front 1 — the plain ramp visibly changes
+as each pixel is scaled to unit length.""",
+    "position_range_remap": """
+Wire `stmap` into **Front 1** (fake P pass). Set `minX` 0.25 / `maxX` 0.75 and `minY` 0.25 /
+`maxY` 0.75 → **red and green become steeper ramps clipped to the centre half of frame**;
+blue sits at flat 0.5 grey (z = 0, mid-bbox). With the default ±1 bbox a 0–1 stmap only
+spans the upper half of each range, so the output is a washed 0.5–1 ramp — correct, just
+undramatic.""",
+
+    # ── color_grade ──
+    "contrast": """
+Loads neutral (`contrast` 1.0) — **no change on load is correct**. Set `contrast` 2.0 →
+shadows crush and highlights lift around the untouched `pivot` (0.18); 0.5 flattens. On
+display/sRGB material set `pivot` 0.5 first, or the whole image also brightens/darkens.""",
+    "exposure": """
+Loads neutral (`stops` 0.0) — no change on load is correct. Set `stops` 1.0 → **exactly
+twice as bright**; −1.0 → half. On log/sRGB footage the move looks wrong (not a clean
+doubling) — that's the colour-space warning, not a bug.""",
+    "saturation": """
+Loads neutral (`sat` 1.0). Fastest check: `sat` 0.0 → **full greyscale**; 2.0 →
+cartoon-vivid.""",
+    "lift_gamma_gain": """
+Loads neutral (0 / 1 / 1) — no change on load is correct. `gamma` 1.5 → mids brighten,
+black/white points hold; `lift` 0.1 → blacks go grey; `gain` 0.5 → whites halve.""",
+    "cosine_palette": """
+Any clip on **Front 1** → **instant rainbow false-colour** mapped by brightness. Cleanest
+demo: feed `radial_ramp`'s output → concentric spectral rings. `tScale` 0.5 slows the
+rainbow; `tOffset` slides which brightness lands on red.""",
+    "srgb_to_linear": """
+Mids and shadows visibly **darken**: a 0.5 grey pixel must come out **0.214** (read it with
+the colour picker). Round-trip check: chain `linear_to_srgb` after it → output equals the
+input exactly (verify with `difference_matte`, gain cranked — solid black).""",
+    "linear_to_srgb": """
+Mids visibly **brighten**: 0.214 in → **0.5** out. Run it LAST (after linear work). Chain
+after `srgb_to_linear` for the exact-inverse round-trip check (difference = black).""",
+    "cineon_to_linear": """
+Feed a horizontal 0–1 ramp: output holds near 0 until input ≈ **0.093** (code 95 = blackPt
+→ 0.0) and reaches **1.0 at ≈ 0.67** (code 685 = whitePt), continuing into super-white
+above. On a real DPX/log plate: the milky log look snaps to contrasty linear with deep
+shadows.""",
+    "linear_to_cineon": """
+Inverse of `cineon_to_linear`: linear 0.0 → ≈ **0.093** (code 95) and 1.0 → ≈ **0.67**
+(code 685) — a linear ramp comes out lifted and flattened (milky log look). Round-trip
+through both with matching `blackPt`/`whitePt`/`gammaC` = exact identity.""",
+    "logc_to_linear": """
+Numeric checkpoint: LogC **0.391 → 0.18** (18 % grey). A LogC plate's flat look snaps to
+contrasty linear. Round-trip with `linear_to_logc` = identity (difference-matte black).""",
+    "linear_to_logc": """
+Numeric checkpoint: linear **0.18 → 0.391**. A linear ramp comes out lifted/flat (log
+look). Pair with `logc_to_linear` for the identity round-trip check.""",
+    "acescct_to_linear": """
+Numeric checkpoint: ACEScct **0.4135 → 0.18** (18 % grey). Round-trip with
+`linear_to_acescct` = identity (difference-matte black).""",
+    "linear_to_acescct": """
+Numeric checkpoint: linear **0.18 → 0.4135**. A linear ramp comes out lifted/flat. Pair
+with `acescct_to_linear` for the identity round-trip check.""",
+
+    # ── depth_tools (the two WIP ones) ──
+    "depth_contours": """
+No depth pass needed: render `radial_ramp` (defaults) and wire it into **Matte 1** as fake
+depth → **concentric contour rings appear immediately**. Any greyscale ramp works. On real
+raw Z, run `depth_normalize` first — at world-unit scales the default `spacing` 0.1 makes
+the lines bunch up or vanish.""",
+    "depth_dof_mask": """
+Fake depth: `radial_ramp` output into **Matte 1** → **a black band (in focus) where the
+ramp crosses `focus` 0.5, white elsewhere**; slide `focus` 0→1 and the band sweeps across
+frame. Remember it outputs a blur-AMOUNT mask for a downstream variable-blur/Defocus — it
+never blurs by itself.""",
+
+    # ── hsv_color (the two WIP ones) ──
+    "chroma_key": """
+Point it at something **green** (defaults key green): matte goes white on the green, black
+elsewhere — on RGB (view Result) and on OutMatte (only once **Matte 1 is wired**). A frame
+with nothing green/saturated is correctly ALL BLACK: sample your target and set `keyHue`
+(0 = red, ⅓ = green, ⅔ = blue; red wraps safely), then widen `tol` until the matte fills.""",
+    "sat_matte": """
+Feed something colourful: **vivid regions white, neutrals black** (Result + OutMatte with
+Matte 1 wired). All-black on a drab plate is correct — drop `satLow` toward 0.05 and it
+should start admitting the faintly-coloured areas.""",
+
+    # ── matte_combine ──
+    "matte_and": """
+Needs BOTH mattes: wire two overlapping soft shapes (e.g. two `radial_ramp` renders with
+different Centres) into **Matte 1 + Matte 2** → white **only in the overlap**. With only
+Matte 1 wired the output is ALL BLACK (`m2` reads 0) — wiring, not a bug.""",
+    "matte_or": """
+Two overlapping shapes on **Matte 1 + Matte 2** → white where **either** is. With only
+Matte 1 wired it passes `m1` straight through (`m2` = 0), which looks like a no-op.""",
+    "matte_xor": """
+Two overlapping shapes on **Matte 1 + Matte 2** → both shapes white with the **overlap
+punched out black**. Only Matte 1 wired = pass-through (`m2` = 0).""",
+    "matte_subtract": """
+Two overlapping shapes on **Matte 1 + Matte 2** → shape A with B's bite taken out of it.
+Only Matte 1 wired = pass-through (`m2` = 0).""",
+    "holdout_matte": """
+Same wiring as `matte_subtract` (A on Matte 1, occluder B on Matte 2) — compare the two on
+SOFT mattes: subtract eats A's soft edge where B overlaps; **holdout preserves it** (it only
+removes coverage A actually has). `amount` 0 disables. Only Matte 1 wired = pass-through.""",
+    "matte_invert": """
+Instant with just **Matte 1**: white ↔ black flips the moment it loads (view Result; a
+solid-alpha clip turns black).""",
+    "matte_grade": """
+Loads neutral (0 / 1 / 1) — no change on load is correct. Wire a SOFT matte (`radial_ramp`
+render) into **Matte 1**: `gamma` 2.0 visibly opens/spreads the soft edge, 0.5 chokes it,
+`lift` 0.2 greys the black surround.""",
+    "matte_falloff_ramp": """
+Loads neutral (`lo` 0 / `hi` 1). Wire a SOFT matte into **Matte 1**, then pull `lo` 0.3 /
+`hi` 0.7 → the soft edge visibly **hardens/tightens**. It reshapes existing softness only —
+on a hard-edged matte nothing changes (it cannot blur; that needs a real blur node).""",
+    "matte_screen_multiply": """
+Two overlapping soft shapes on **Matte 1 + Matte 2**: `mode` 1 (screen) → a smooth union
+with no hard crease in the overlap; `mode` 0 → their intersection. Toggle 1 ↔ 0 and the
+combine visibly flips. Only Matte 1 wired: screen ≈ pass-through, multiply → black.""",
+    "premult": """
+On solid-alpha footage NOTHING changes (`m1` = 1 everywhere) — correct. Wire a soft matte
+(`radial_ramp` render) into **Matte 1** → **RGB fades to black outside the shape** with the
+matte's soft rolloff.""",
+    "unpremult": """
+Best tested as a round-trip: `premult` → `unpremult` with the same soft matte on both →
+restores the original (check with `difference_matte`, gain up — black means exact). Alone
+on solid alpha: no change, correct. (Where `m1` = 0 it passes through by the divide guard.)""",
+
+    # ── noise (the three WIP ones) ──
+    "noise_cells": """
+Any clip on **Front 1** (resolution only) → **flat random grey blocks, 64 px** on load. No
+image at all usually means Front 1 isn't wired. Keyframe `seed` and the cells reshuffle
+every frame.""",
+    "noise_value": """
+Any clip on **Front 1** → **soft organic grey blobs (~80 px)** on load. `gain` 2.0 adds
+contrast; keyframe `seed` to make it drift.""",
+    "noise_fbm": """
+Any clip on **Front 1** → **cloudy fractal field** on load. `persistence` 0.8 → gritty,
+0.3 → smooth; keyframe `seed` to evolve. (Heaviest expression in the library — a beat of
+compile hesitation on load is normal.)""",
+
+    # ── pattern_generators (the six WIP ones) ──
+    "marble": """
+Any clip on **Front 1** → **veined pale-stone marble immediately**. Set `turb` 0 → straight
+bands (proves the turbulence is what makes it marble); crank `turb` 10 for heavy swirl.""",
+    "noise_random": """
+Any clip on **Front 1** → **per-pixel colour static** (R/G/B are independent hashes). It is
+IDENTICAL every frame by design — for animated noise use `noise/` with a keyframed `seed`.""",
+    "radial_ramp": """
+⚠ **Re-verify the 2026-07-21 fix:** set `softness` 0.0 → a **clean hard-edged circle with
+no speckle/sparkle on the rim** (the old bug). Normal load: soft white glow centred at the
+image middle, radius 600 px, raw ramp on OutMatte (Matte 1 wired).""",
+    "rays": """
+Any clip on **Front 1** → **8-spoke black/white sunburst from Centre immediately**. `rays`
+sets the count; `rot` is radians (static — `spin_rays` is the animated one).""",
+    "rings": """
+Any clip on **Front 1** → **concentric rings from Centre immediately**. `freq` is tiny
+(0.05): hold **Space + Drag** to tune in hundredths, or the value jumps uselessly.""",
+    "wood_grain": """
+Any clip on **Front 1** → **brown/tan wandering growth rings immediately**. `turb` 0 →
+perfect circles; higher = knottier.""",
+
+    # ── stylization / optics / uv_distortion ──
+    "palette_quantize": """
+⚠ **Re-verify the 2026-07-21 fix:** feed a plate with blown highlights (or gain one up ×4)
+→ the brightest areas must land EXACTLY on colour B (default white), never brighter (the
+old bug overshot past B). Normal load: instant 4-tone posterize of any clip.""",
+    "thin_film": """
+Any clip on **Front 1** → **rainbow interference rings from Centre immediately**. Scrub
+frames 1–100: the colours roll outward (`shift` is keyframed). Band intensity rides
+OutMatte (Matte 1 wired).""",
+    "lens_distort": """
+Viewed directly it is just a red/green gradient — **correct; it outputs coordinates, not a
+warp**. Sanity check alone: `k1` 0.0 → identical to the `stmap` setup's ramp. Real test:
+feed it into the same downstream ST-map/UV-warp node you used to verify the uploaded
+`stmap_generators` folder, with `uv_test_chart` as the source → `k1` −0.2 bulges the grid
+(barrel), +0.2 pinches it (pincushion).""",
+    "lens_undistort": """
+Round-trip test through your ST-map/UV-warp node: distort `uv_test_chart` with
+`lens_distort` (`k1` 0.2), then apply THIS map (same `k1`) in a second pass → **the grid
+comes back straight** (approximate inverse — far corners may be a pixel or two off, which
+is expected).""",
+}
+
+
 def write_doc(s):
     name = s["name"]
     fname = s.get("filename", name)
@@ -5598,6 +5800,8 @@ def write_doc(s):
         md += "\n## Node dependencies\n" + DEPENDS[name].strip() + "\n"
     if name in NOTES:
         md += "\n" + NOTES[name].strip() + "\n"
+    if name in QUICK_TEST:
+        md += "\n### Quick test\n" + QUICK_TEST[name].strip() + "\n"
     path = os.path.join(_out_dir(fname, s["category"]), f"{fname}.md")
     with open(path, "w") as f:
         f.write(md)

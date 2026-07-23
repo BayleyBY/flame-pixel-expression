@@ -32,3 +32,8 @@ hue cycles through the spectrum. Here the optical path is faked as a function of
   to roll the colours outward. Edit the two keys for speed/length; reverse them to roll inward.
 - Tag it Raw/Data-ish — it's a generated look, not scene-linear light. Screen/add it over a
   surface for an oil-slick comp.
+
+### Quick test
+Any clip on **Front 1** → **rainbow interference rings from Centre immediately**. Scrub
+frames 1–100: the colours roll outward (`shift` is keyframed). Band intensity rides
+OutMatte (Matte 1 wired).

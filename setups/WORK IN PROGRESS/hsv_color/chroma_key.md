@@ -23,3 +23,9 @@ saturation clears `satMin`, black elsewhere. Written to RGB **and** the Matte.
 ### Practical notes
 - Quick key by colour (greens, skies, skin). Its saturation-axis sibling is `sat_matte`;
   `matte_and` the two for a tighter "this hue *and* this vividness" selection.
+
+### Quick test
+Point it at something **green** (defaults key green): matte goes white on the green, black
+elsewhere — on RGB (view Result) and on OutMatte (only once **Matte 1 is wired**). A frame
+with nothing green/saturated is correctly ALL BLACK: sample your target and set `keyHue`
+(0 = red, ⅓ = green, ⅔ = blue; red wraps safely), then widen `tol` until the matte fills.

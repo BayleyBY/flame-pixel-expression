@@ -29,3 +29,7 @@ order baked in is `pow(value * gain + lift, 1/gamma)`.
 - This is a luma-style master grade on all three channels equally; for a colour cast use
   `white_balance`, for a single-hue fix use `hsl_targeted`.
 - Defaults (`lift` 0, `gamma` 1, `gain` 1) are a no-op, so it's safe to drop in and dial.
+
+### Quick test
+Loads neutral (0 / 1 / 1) — no change on load is correct. `gamma` 1.5 → mids brighten,
+black/white points hold; `lift` 0.1 → blacks go grey; `gain` 0.5 → whites halve.

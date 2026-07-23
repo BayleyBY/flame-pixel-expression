@@ -20,3 +20,7 @@
 - Two colours: `aR/aG/aB` (pattern 0) → `bR/bG/bB` (pattern 1), default black→white; OutMatte
   carries the raw pattern. (See `radial_ramp` notes.)
 - For rings that **expand over time**, use `pulse_rings` instead.
+
+### Quick test
+Any clip on **Front 1** → **concentric rings from Centre immediately**. `freq` is tiny
+(0.05): hold **Space + Drag** to tune in hundredths, or the value jumps uselessly.

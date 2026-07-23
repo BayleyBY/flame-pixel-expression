@@ -33,3 +33,8 @@ the cheapest way to make a depth pass, a mask, or a noise field *readable* as co
 
 Pair with `false_color_exposure` (discrete bands) when you need *readable stops* rather than a
 continuous ramp.
+
+### Quick test
+Any clip on **Front 1** → **instant rainbow false-colour** mapped by brightness. Cleanest
+demo: feed `radial_ramp`'s output → concentric spectral rings. `tScale` 0.5 slows the
+rainbow; `tOffset` slides which brightness lands on red.

@@ -9,9 +9,11 @@ status. This supersedes the per-setup checklist below (kept as history):
   halftone, crosshatch, zone_system_posterize, st_uv_map_inspector, kaleidoscope_map,
   mandelbrot, burning_ship, painted_grade, dual_output_depth, alpha_crunch) and the fixed
   hue-matrix family (hue_rotate, hsl_targeted, hsv_color_replace) and normal_relight.
-- **`setups/WORK IN PROGRESS/` — 45 setups deemed not worth uploading** (largely basics Flame
-  covers natively: the matte_combine set-ops, basic color_grade ops + log-curve conversions,
-  simple patterns, scalar noise, lens_distort/undistort, etc.). Not broken — just held back.
+- **`setups/WORK IN PROGRESS/` — 45 setups held back** (the matte_combine set-ops, basic
+  color_grade ops + log-curve conversions, simple patterns, scalar noise,
+  lens_distort/undistort, etc.) — they either didn't appear to work in Flame or couldn't be
+  tested from the docs. A 2026-07-22 review found no GLSL bugs (wiring/default traps) and
+  added a "### Quick test" recipe to each of these `.md`s.
   Their in-Flame status is whatever the checklist below last said; the only revoked setups
   never re-verified are here: **`radial_ramp`** and **`palette_quantize`**.
 - **Layout/renames done during the upload:** categories were renamed/merged inside `Uploaded to Logik-Portal/`

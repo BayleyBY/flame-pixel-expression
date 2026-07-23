@@ -14,3 +14,7 @@ _No variables._
 
 Matte 1 minus Matte 2, clamped to 0..1 — cuts Matte 2 out of Matte 1 (holdouts). Inputs on
 Matte 1 and Matte 2.
+
+### Quick test
+Two overlapping shapes on **Matte 1 + Matte 2** → shape A with B's bite taken out of it.
+Only Matte 1 wired = pass-through (`m2` = 0).

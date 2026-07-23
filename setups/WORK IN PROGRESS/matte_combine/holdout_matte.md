@@ -20,3 +20,8 @@ The **holdout** op for layered renders: matte **A** (Matte 1) minus where occlud
 where A *itself* has coverage, so A's soft edges survive against B instead of being eaten by a
 flat subtraction. That's the behaviour you want when compositing one render element in front of
 another. Result on RGB + Matte.
+
+### Quick test
+Same wiring as `matte_subtract` (A on Matte 1, occluder B on Matte 2) — compare the two on
+SOFT mattes: subtract eats A's soft edge where B overlaps; **holdout preserves it** (it only
+removes coverage A actually has). `amount` 0 disables. Only Matte 1 wired = pass-through.

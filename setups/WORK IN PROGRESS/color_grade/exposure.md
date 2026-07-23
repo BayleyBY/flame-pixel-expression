@@ -28,3 +28,8 @@ trimming a bright one. A plain "gain 1.7" carries no such intuition.
   or gamma — set exposure before `contrast` / `lift_gamma_gain` so the pivot math sees the
   intended levels.
 - Keyframe `stops` for a quick exposure ramp (a light coming up, an iris pull).
+
+### Quick test
+Loads neutral (`stops` 0.0) — no change on load is correct. Set `stops` 1.0 → **exactly
+twice as bright**; −1.0 → half. On log/sRGB footage the move looks wrong (not a clean
+doubling) — that's the colour-space warning, not a bug.

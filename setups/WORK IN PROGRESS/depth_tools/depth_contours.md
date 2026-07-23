@@ -27,3 +27,9 @@ glance, and doubles as a stylised contour effect.
 - **Depth on Matte 1.** `spacing` and `lineWidth` are in **depth units**, so normalise first
   (`depth_normalize`) or the lines bunch up / vanish at world-unit scales.
 - Reduce `lineWidth` for fine lines; increase `spacing` for fewer of them.
+
+### Quick test
+No depth pass needed: render `radial_ramp` (defaults) and wire it into **Matte 1** as fake
+depth → **concentric contour rings appear immediately**. Any greyscale ramp works. On real
+raw Z, run `depth_normalize` first — at world-unit scales the default `spacing` 0.1 makes
+the lines bunch up or vanish.

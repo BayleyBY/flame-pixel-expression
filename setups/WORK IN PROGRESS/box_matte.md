@@ -31,3 +31,10 @@ multiplied together — which is exactly why it's **axis-aligned only**: there's
   extent** (world units); `soft` = edge softness as a fraction of the extent.
 - Read the P pass raw. Great for a world-space garbage matte (isolate a room, a vehicle's
   bounding volume, a slab of the set).
+
+### Quick test
+No P pass needed: wire the `stmap` setup's output into **Front 1** (fake position pass).
+Set `cenR` 0.5, `cenG` 0.5, `cenB` 0.0, `boxSize` 0.25 → **a soft white rectangle covering
+the middle of frame** (Result; OutMatte too once Matte 1 is wired). With the defaults
+(`cen` 0,0,0 / `boxSize` 1.0) the whole 0–1 stmap sits *inside* the box, so the frame reads
+solid white — that's correct, not a bug.

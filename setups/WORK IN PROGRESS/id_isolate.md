@@ -31,3 +31,9 @@ of a key.
 ### Practical notes
 - `gain` + `tintR/G/B` are the grade applied inside the mask.
 - Feed it the output of `crypto_pick_2rank`/`4rank` to grade a single object with no roto.
+
+### Quick test
+Beauty on **Front 1**, ANY high-contrast clip or matte on **Matte 1** (a `radial_ramp`
+render works). Set `tintR` 2.0, `tintG` 0.3, `tintB` 0.3 → **the masked region turns hot
+red**, everything else passes through untouched. With nothing on Matte 1 the mask reads 0
+and the node outputs the beauty bit-for-bit — the classic "it does nothing" trap.

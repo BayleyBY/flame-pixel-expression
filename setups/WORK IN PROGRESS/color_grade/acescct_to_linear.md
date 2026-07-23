@@ -18,3 +18,7 @@ Piecewise around the encoded breakpoint **0.155251**: `exp2` above, a linear toe
 
 Pair with **`linear_to_acescct`**. **Expects** ACEScct in → scene-linear (ACES) out. (This is the
 transfer curve only — it does **not** do the AP0/AP1 primaries; handle gamut separately.)
+
+### Quick test
+Numeric checkpoint: ACEScct **0.4135 → 0.18** (18 % grey). Round-trip with
+`linear_to_acescct` = identity (difference-matte black).

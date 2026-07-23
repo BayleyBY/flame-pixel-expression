@@ -28,3 +28,10 @@ falloff across its depth.
 - This eats **6 of 8** variable slots (the bbox) — like the colour-var pattern, that's expected.
 - Tip: read the P pass's values off a pixel to find the object's extents, then set the bbox.
   **Tag Raw/Data.**
+
+### Quick test
+Wire `stmap` into **Front 1** (fake P pass). Set `minX` 0.25 / `maxX` 0.75 and `minY` 0.25 /
+`maxY` 0.75 → **red and green become steeper ramps clipped to the centre half of frame**;
+blue sits at flat 0.5 grey (z = 0, mid-bbox). With the default ±1 bbox a 0–1 stmap only
+spans the upper half of each range, so the output is a washed 0.5–1 ramp — correct, just
+undramatic.

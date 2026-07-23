@@ -18,3 +18,7 @@ A **radial sunburst** — `rays` spokes via `atan` around the node's **Centre**.
 - `rays` = number of spokes; `rot` = rotation in **radians**.
 - Two colours `aR/aG/aB`→`bR/bG/bB` (default black→white), raw pattern on OutMatte.
 - `rot` is a **static** angle — for a spinning version use `spin_rays`.
+
+### Quick test
+Any clip on **Front 1** → **8-spoke black/white sunburst from Centre immediately**. `rays`
+sets the count; `rot` is radians (static — `spin_rays` is the animated one).

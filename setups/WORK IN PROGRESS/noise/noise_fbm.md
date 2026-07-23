@@ -27,3 +27,8 @@ natural-looking one: clouds, smoke, terrain, weathering.
 - This is the **heaviest expression in the library** (three inlined octaves) — it's verified
   loading in Flame, but it's the most likely place to feel a compile cost.
 - Greyscale field on RGB, solid alpha; **tag Raw/Data**.
+
+### Quick test
+Any clip on **Front 1** → **cloudy fractal field** on load. `persistence` 0.8 → gritty,
+0.3 → smooth; keyframe `seed` to evolve. (Heaviest expression in the library — a beat of
+compile hesitation on load is normal.)

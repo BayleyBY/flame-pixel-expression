@@ -19,3 +19,7 @@ greyscale, 1 = unchanged, > 1 = boosted (can clip), < 1 desaturates toward grey.
 - **Luma weights are Rec.709** — correct in scene-linear, approximate elsewhere.
 - This is a flat, global push. For saturation that **protects already-vivid colours and
   skin**, use `vibrance`; for a single hue, `hsl_targeted`.
+
+### Quick test
+Loads neutral (`sat` 1.0). Fastest check: `sat` 0.0 → **full greyscale**; 2.0 →
+cartoon-vivid.

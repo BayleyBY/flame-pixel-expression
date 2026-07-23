@@ -22,12 +22,15 @@ status — **this layout is hand-managed by the user; do not "fix" it back to fl
   `control_surfaces`→`experimental`, and a new `just_for_fun` (the 3 fractals + `radar_sweep`
   + `digital_counter`). Cross-moves: `moire` + `sdf_lattice` → `pattern_generator`;
   `uv_transform` + `anamorphic_unsqueeze` → `stmap_generators`.
-- **`setups/WORK IN PROGRESS/`** — **45 setups deemed not worth uploading** (largely basics Flame
-  covers natively: `matte_combine/` set-ops, basic `color_grade/` ops and log-curve
-  conversions, simple `pattern_generators/`, scalar `noise/`, `uv_distortion/`
-  lens_distort/undistort, plus a few loose files at its root). Not broken — just held back.
-  The only setups whose 2026-07-21 bug-fixes were never re-verified in Flame are here:
-  `radial_ramp` and `palette_quantize`.
+- **`setups/WORK IN PROGRESS/`** — **45 setups held back from the Portal** (`matte_combine/`
+  set-ops, basic `color_grade/` ops and log-curve conversions, simple `pattern_generators/`,
+  scalar `noise/`, `uv_distortion/` lens_distort/undistort, plus a few loose files at its
+  root). Held back because they **either didn't appear to work in Flame or couldn't be tested
+  from the docs** — a 2026-07-22 review found no GLSL bugs (mostly neutral-default /
+  missing-second-input traps) and added a **"### Quick test"** block to every one of these
+  `.md`s (exact wiring + values + what a working result looks like; `QUICK_TEST` table in the
+  generator). The only setups whose 2026-07-21 bug-fixes were never re-verified in Flame are
+  here: `radial_ramp` and `palette_quantize`.
 - **One file rename:** `color_replace` → **`hsv_color_replace`** (file + md title only; the
   XML inside still says `scene/color_replace/` — proven to load fine. The generator's
   `filename` override on that setup reproduces this exactly).
@@ -214,7 +217,7 @@ section. `stylization/` setups are collected in a `_STYLIZATION` list appended t
 `diagnostics` `experimental` `hsv_color` `just_for_fun` `matte_tools` `noise`
 `pattern_generator` `shapes` `stmap_generators` `stylize` `utility`
 
-**`WORK IN PROGRESS/` (45 — held back from the Portal, not broken):**
+**`WORK IN PROGRESS/` (45 — held back; every `.md` here has a "### Quick test" recipe):**
 `color_grade` `depth_tools` `hsv_color` `matte_combine` `noise` `optics_physics`
 `pattern_generators` `stylization` `uv_distortion` + 4 loose files at its root
 (`box_matte`, `id_isolate`, `normal_renormalize`, `position_range_remap`).
@@ -248,10 +251,13 @@ the library — so if you edit one, they're the most likely to need a fresh live
   family (`hue_rotate`/`hsl_targeted`/`hsv_color_replace`), `normal_relight`, and the animated
   channels (`metaball_ring`; `thin_film` is in `WORK IN PROGRESS/`). The per-setup tracker
   (`documentation/live_flame_eval_progress.md`) is now historical.
-- **The 45 in `setups/WORK IN PROGRESS/` were deemed not worth uploading** (mostly basics Flame
-  covers natively) — not broken, just held back. Their verification state is frozen at what the
-  tracker last recorded; the only bug-fixed setups never re-verified in Flame are `radial_ramp`
-  and `palette_quantize` (both skipped — only matters if they're ever promoted to the Portal).
+- **The 45 in `setups/WORK IN PROGRESS/` were held back** because they didn't appear to work
+  in Flame or couldn't be tested from their docs. A 2026-07-22 review found **no GLSL bugs**
+  — the failures were wiring/default traps (OutMatte needs Matte 1; two-matte ops degrade
+  with one input; grades load neutral; data tools need their pass) — and every one of these
+  `.md`s now ends with a **"### Quick test"** recipe. The only bug-fixed setups never
+  re-verified in Flame are `radial_ramp` and `palette_quantize` (their Quick tests say
+  exactly what to confirm).
 - **All 156 pass the offline checkers** (both recalibrated for the new format):
   `tools/validate_setups.py` → 0 errors/0 warnings, and `tools/glsl_compile_check.py`
   (`glslangValidator`, `#version 410 core`) → 156 compile. A clean compile is strong evidence a

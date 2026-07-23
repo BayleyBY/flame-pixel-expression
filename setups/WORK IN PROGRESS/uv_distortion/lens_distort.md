@@ -30,3 +30,10 @@ the result into an **STMap node** whose source is the plate you want distorted.
   resolution.
 - **Tag the output Raw/Data** and STMap it — colour-managing a coordinate map corrupts it.
 - Typical job: **add** a plate's measured distortion onto a clean CG render so it matches.
+
+### Quick test
+Viewed directly it is just a red/green gradient — **correct; it outputs coordinates, not a
+warp**. Sanity check alone: `k1` 0.0 → identical to the `stmap` setup's ramp. Real test:
+feed it into the same downstream ST-map/UV-warp node you used to verify the uploaded
+`stmap_generators` folder, with `uv_test_chart` as the source → `k1` −0.2 bulges the grid
+(barrel), +0.2 pinches it (pincushion).

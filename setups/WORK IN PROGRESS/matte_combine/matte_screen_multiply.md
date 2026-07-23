@@ -20,3 +20,8 @@ Those use `max` / `min` — geometrically hard unions/intersections with a visib
 two mattes meet. Screen/multiply roll the overlap together smoothly, which usually reads better
 for soft mattes and density build-up. Pick `matte_or`/`and` for crisp set logic, this for an
 optical feel. Result on RGB + Matte.
+
+### Quick test
+Two overlapping soft shapes on **Matte 1 + Matte 2**: `mode` 1 (screen) → a smooth union
+with no hard crease in the overlap; `mode` 0 → their intersection. Toggle 1 ↔ 0 and the
+combine visibly flips. Only Matte 1 wired: screen ≈ pass-through, multiply → black.

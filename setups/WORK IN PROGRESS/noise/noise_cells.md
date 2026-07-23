@@ -26,3 +26,8 @@ make the pattern evolve/flicker over a shot.
   matte. Shuffle a channel to alpha downstream if you need it as a mask, and **tag it
   Raw/Data**.
 - Uses: mosaic/blocky randomness, glitch, per-cell breakup, stepped dissolves.
+
+### Quick test
+Any clip on **Front 1** (resolution only) → **flat random grey blocks, 64 px** on load. No
+image at all usually means Front 1 isn't wired. Keyframe `seed` and the cells reshuffle
+every frame.

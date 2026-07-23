@@ -41,3 +41,8 @@ doesn't care *which* colour, only *how* colourful.
 - **Combine with hue** — chain after `chroma_key` via `matte_and` to get "this hue *and*
   this saturation", a much tighter selection than either alone.
 - Raise `valMin` first if a noisy shadow area is leaking into the matte.
+
+### Quick test
+Feed something colourful: **vivid regions white, neutrals black** (Result + OutMatte with
+Matte 1 wired). All-black on a drab plate is correct — drop `satLow` toward 0.05 and it
+should start admitting the faintly-coloured areas.

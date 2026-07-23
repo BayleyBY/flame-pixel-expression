@@ -13,3 +13,7 @@ _No variables._
 ## Notes
 
 Inverts the matte (`1 - m1`) — flips inside and outside.
+
+### Quick test
+Instant with just **Matte 1**: white ↔ black flips the moment it loads (view Result; a
+solid-alpha clip turns black).

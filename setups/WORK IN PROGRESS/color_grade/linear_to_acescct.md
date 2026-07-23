@@ -15,3 +15,7 @@ _No variables._
 Inverse of `acescct_to_linear` — **scene-linear → ACEScct**. Piecewise around the **linear**
 breakpoint 0.0078125 (`log2` branch above, linear toe below); the `log2` argument is guarded.
 Transfer curve only — no primaries conversion. Use to enter an ACEScct grading space.
+
+### Quick test
+Numeric checkpoint: linear **0.18 → 0.4135**. A linear ramp comes out lifted/flat. Pair
+with `acescct_to_linear` for the identity round-trip check.

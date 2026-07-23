@@ -19,3 +19,7 @@ Procedural **wood**: concentric growth rings around the node Centre, warped by v
   (0 = clean circles, high = knotty).
 - Default colours are brown→tan; it's a two-colour generator, so set `aR/aG/aB`→`bR/bG/bB` for any
   wood tone (or match all three for grayscale). Pair with `cosine_palette` for richer grading.
+
+### Quick test
+Any clip on **Front 1** → **brown/tan wandering growth rings immediately**. `turb` 0 →
+perfect circles; higher = knottier.

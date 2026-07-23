@@ -30,3 +30,8 @@ lighter as you add contrast), which usually isn't what you want.
 - **No clamp** — strong contrast can drive values negative or super-white. Follow with
   `aov_clamp_negative` or a clamp if a downstream op can't take it.
 - Do contrast *after* exposure/white-balance so the pivot sits at the right level.
+
+### Quick test
+Loads neutral (`contrast` 1.0) — **no change on load is correct**. Set `contrast` 2.0 →
+shadows crush and highlights lift around the untouched `pivot` (0.18); 0.5 flattens. On
+display/sRGB material set `pivot` 0.5 first, or the whole image also brightens/darkens.

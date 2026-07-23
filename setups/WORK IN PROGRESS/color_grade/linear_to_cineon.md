@@ -18,3 +18,8 @@ so it's computed as `log()·0.4342944819`; the argument is `max()`-guarded again
 
 Use it to re-encode for a DPX/film-log delivery, or as the closing half of a
 `cineon_to_linear` … `linear_to_cineon` bracket. **Expects** scene-linear in, Cineon-log out.
+
+### Quick test
+Inverse of `cineon_to_linear`: linear 0.0 → ≈ **0.093** (code 95) and 1.0 → ≈ **0.67**
+(code 685) — a linear ramp comes out lifted and flattened (milky log look). Round-trip
+through both with matching `blackPt`/`whitePt`/`gammaC` = exact identity.

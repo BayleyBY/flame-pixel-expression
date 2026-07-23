@@ -25,3 +25,7 @@ counterpart to `noise_cells`.
 - One octave, so it's smooth but plain — reach for `noise_fbm` when you want fractal detail.
 - Greyscale field on RGB, solid alpha; **tag Raw/Data**. Good base for displacement,
   soft masks, and subtle breakup.
+
+### Quick test
+Any clip on **Front 1** → **soft organic grey blobs (~80 px)** on load. `gain` 2.0 adds
+contrast; keyframe `seed` to make it drift.

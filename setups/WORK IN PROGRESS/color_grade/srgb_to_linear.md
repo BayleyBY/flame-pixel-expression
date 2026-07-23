@@ -36,3 +36,8 @@ will give wrong results (crushed shadows, off colours).
   approximation — match it on the encode side.
 - Only for sRGB-encoded sources. Don't run it on data passes (P, normals, depth, ST maps,
   Cryptomatte) — those are already linear/raw and must stay untouched.
+
+### Quick test
+Mids and shadows visibly **darken**: a 0.5 grey pixel must come out **0.214** (read it with
+the colour picker). Round-trip check: chain `linear_to_srgb` after it → output equals the
+input exactly (verify with `difference_matte`, gain cranked — solid black).

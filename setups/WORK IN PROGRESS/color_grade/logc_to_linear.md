@@ -18,3 +18,7 @@ segment below (the toe). The LogC3 constants are baked (a fixed transform, like 
 
 Pair with **`linear_to_logc`** to re-encode. **Expects** ARRI LogC3 in → scene-linear out. (LogC3
 is the SUP-3.x / Alexa Classic encoding — match your source; LogC4 / other EIs differ.)
+
+### Quick test
+Numeric checkpoint: LogC **0.391 → 0.18** (18 % grey). A LogC plate's flat look snaps to
+contrasty linear. Round-trip with `linear_to_logc` = identity (difference-matte black).

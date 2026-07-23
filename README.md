@@ -11,9 +11,11 @@ files.
 **The library is split by publication status (2026-07-22):**
 - **`setups/Uploaded to Logik-Portal/` — 111 setups, all verified to work in Flame 2027.1 and published to
   the Logik Portal.**
-- **`setups/WORK IN PROGRESS/` — 45 setups held back from the Portal** (mostly basics Flame
-  covers natively — set-op mattes, simple grades, log-curve conversions). They pass the
-  offline checkers; they just weren't deemed worth uploading.
+- **`setups/WORK IN PROGRESS/` — 45 setups held back from the Portal** (set-op mattes,
+  simple grades, log-curve conversions, basic noise/patterns). They pass the offline
+  checkers; most just don't show anything until wired/dialled correctly — **each of these
+  `.md`s ends with a "Quick test" block** giving exact wiring, values, and what a working
+  result looks like.
 
 The per-folder tables below note where each setup lives.
 
@@ -58,7 +60,7 @@ setups/
     depth_tools/        diagnostics/          experimental/      hsv_color/
     just_for_fun/       matte_tools/          noise/             pattern_generator/
     shapes/             stmap_generators/     stylize/           utility/
-  WORK IN PROGRESS/ # 45 — held back from the Portal (not broken)
+  WORK IN PROGRESS/ # 45 — held back; each .md has a "Quick test" block
     color_grade/        depth_tools/          hsv_color/         matte_combine/
     noise/              optics_physics/       pattern_generators/ stylization/
     uv_distortion/      + 4 loose files (box_matte, id_isolate,
@@ -313,7 +315,7 @@ to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
 | `sat_matte` | matte from a saturation window | Front 1 | `satLow` 0.15, `satHigh` 1.0, `soft` 0.05, `valMin` 0.0 |
 
 ### `WORK IN PROGRESS/matte_combine/`
-All 11 held back from the Portal (Flame covers these natively) — still valid setups.
+All 11 held back from the Portal. The set-ops need BOTH matte inputs wired (with only Matte 1, `matte_and` reads black and the rest pass through) — each `.md` has a Quick test showing this.
 
 | File | Use | Inputs needed | Variables (defaults) |
 |------|-----|---------------|----------------------|

@@ -30,3 +30,7 @@ your linear work to put pixels back into a display-referred sRGB space for viewi
 - Exact piecewise sRGB, not a 2.2 gamma approximation; use the matching decode upstream.
 - Data passes (P, normals, depth, ST maps, crypto) are linear/raw by definition — never
   sRGB-encode them.
+
+### Quick test
+Mids visibly **brighten**: 0.214 in → **0.5** out. Run it LAST (after linear work). Chain
+after `srgb_to_linear` for the exact-inverse round-trip check (difference = black).

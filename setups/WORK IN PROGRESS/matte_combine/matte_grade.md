@@ -19,3 +19,8 @@
 - `gain` — scales density (multiply).
 
 Tightens or opens a matte's edge; defaults (`lift 0 / gamma 1 / gain 1`) are neutral (pass-through).
+
+### Quick test
+Loads neutral (0 / 1 / 1) — no change on load is correct. Wire a SOFT matte (`radial_ramp`
+render) into **Matte 1**: `gamma` 2.0 visibly opens/spreads the soft edge, 0.5 chokes it,
+`lift` 0.2 greys the black surround.
