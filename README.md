@@ -9,9 +9,9 @@ files.
 **Requires Autodesk Flame 2027.1+** — the release that introduced the Pixel Expression node.
 
 **The library is split by publication status (2026-07-22):**
-- **`setups/_UPLOADED/` — 111 setups, all verified to work in Flame 2027.1 and published to
+- **`setups/Uploaded to Logik-Portal/` — 111 setups, all verified to work in Flame 2027.1 and published to
   the Logik Portal.**
-- **`setups/_SKIP_FOR_NOW/` — 45 setups held back from the Portal** (mostly basics Flame
+- **`setups/WORK IN PROGRESS/` — 45 setups held back from the Portal** (mostly basics Flame
   covers natively — set-op mattes, simple grades, log-curve conversions). They pass the
   offline checkers; they just weren't deemed worth uploading.
 
@@ -21,7 +21,7 @@ Tooling (in `tools/`):
 - `tools/generate_setups.py` — single source of truth; edit a dict + the `CATEGORY` map and
   re-run to regenerate every file. Handles XML-escaping, slot padding, and folders — and
   regenerates each setup **in place** at its current on-disk location, so the hand-managed
-  `_UPLOADED`/`_SKIP_FOR_NOW` layout survives a regenerate.
+  `Uploaded to Logik-Portal`/`WORK IN PROGRESS` layout survives a regenerate.
 - `tools/validate_setups.py` — sanity sweep: XML well-formedness, slot counts, balanced parens,
   reserved-name collisions, and undefined-identifier checks (catches variable typos).
   Run after any edit; current status: **156 setups, 0 errors, 0 warnings**.
@@ -33,8 +33,8 @@ Tooling (in `tools/`):
 **Live-Flame status:** ✅ **done for everything uploaded.** A Pixel Expression node update
 (PR245, 2026-07-07) changed the save-file format, so the whole library was regenerated to the
 new format and re-verified from scratch; that pass concluded with the **2026-07-22 Logik Portal
-upload — all 111 setups in `_UPLOADED/` are verified to work in Flame 2027.1**. The 45 in
-`_SKIP_FOR_NOW/` pass the validator and offline GLSL compile-check (as do all 156) but weren't
+upload — all 111 setups in `Uploaded to Logik-Portal/` are verified to work in Flame 2027.1**. The 45 in
+`WORK IN PROGRESS/` pass the validator and offline GLSL compile-check (as do all 156) but weren't
 uploaded, and two of them (`radial_ramp`, `palette_quantize`) carry 2026-07-21 bug-fixes that
 were never re-verified in Flame. Eval history: `documentation/live_flame_eval_progress.md`.
 
@@ -53,12 +53,12 @@ and reference docs under `documentation/`:
 
 ```
 setups/
-  _UPLOADED/     # 111 — verified in Flame 2027.1, on the Logik Portal
+  Uploaded to Logik-Portal/     # 111 — verified in Flame 2027.1, on the Logik Portal
     3d_position_tools/  animated_generators/  aov_tools/         color_grade/
     depth_tools/        diagnostics/          experimental/      hsv_color/
     just_for_fun/       matte_tools/          noise/             pattern_generator/
     shapes/             stmap_generators/     stylize/           utility/
-  _SKIP_FOR_NOW/ # 45 — held back from the Portal (not broken)
+  WORK IN PROGRESS/ # 45 — held back from the Portal (not broken)
     color_grade/        depth_tools/          hsv_color/         matte_combine/
     noise/              optics_physics/       pattern_generators/ stylization/
     uv_distortion/      + 4 loose files (box_matte, id_isolate,
@@ -69,7 +69,7 @@ documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
                current-format reference saves are in PR245/)
 ```
 
-### `_UPLOADED/matte_tools/` (was `alpha_matte_tools/`)
+### `Uploaded to Logik-Portal/matte_tools/` (was `alpha_matte_tools/`)
 | File | Nuke origin | Inputs needed | Variables (defaults) |
 |------|-------------|---------------|----------------------|
 | `alpha_crunch` | crunch alpha | Matte 1 | `thresh` 0.1 |
@@ -79,10 +79,10 @@ documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
 | `difference_matte` | clip vs clean-plate diff key | Front 1 + Front 2 | `gain` 5.0 |
 | `garbage_gradient_matte` | rotated linear-gradient garbage matte | none (uses Centre) | `angle` 0.0, `offset` 0.0, `feather` 100 |
 
-### `_UPLOADED/pattern_generator/` + `_SKIP_FOR_NOW/pattern_generators/`
-Split by upload status — **in `_SKIP_FOR_NOW/pattern_generators/`:** `radial_ramp`, `rings`,
+### `Uploaded to Logik-Portal/pattern_generator/` + `WORK IN PROGRESS/pattern_generators/`
+Split by upload status — **in `WORK IN PROGRESS/pattern_generators/`:** `radial_ramp`, `rings`,
 `rays`, `noise_random`, `wood_grain`, `marble`. The rest are uploaded, and
-`_UPLOADED/pattern_generator/` also gained `moire` (from `optics_physics/`) and `sdf_lattice`
+`Uploaded to Logik-Portal/pattern_generator/` also gained `moire` (from `optics_physics/`) and `sdf_lattice`
 (from `sdf_shapes/`) — their rows stay in their original tables below.
 
 | File | Nuke origin | Inputs needed | Variables (defaults) |
@@ -112,7 +112,7 @@ luminance-only result); the exceptions are `wood_grain` (brown/tan) and `marble`
 which ship with thematic colour defaults. OutMatte still carries the raw 0..1 pattern mask. (Numeric
 fields step in tenths — use **Space + Drag** for finer colour values.)
 
-### `_UPLOADED/animated_generators/`
+### `Uploaded to Logik-Portal/animated_generators/`
 Keyframed `t` variable drives motion — **scrub frames 1–100** to see it. `t` is animated
 as a 2-key channel (frame 1 → 0, frame 100 → end); edit those keys to change speed/length.
 
@@ -131,10 +131,10 @@ as a 2-key channel (frame 1 → 0, frame 100 → end); edit those keys to change
 Two colours work exactly as in `pattern_generators/`: `aR/aG/aB` → `bR/bG/bB` (default
 black→white). Defaults reproduce the original grayscale.
 
-### `color_grade/` (split across `_UPLOADED/` and `_SKIP_FOR_NOW/`)
+### `color_grade/` (split across `Uploaded to Logik-Portal/` and `WORK IN PROGRESS/`)
 **Uploaded:** `despill_green`, `voxelize`, `white_balance`, `lens_vignette`,
 `saturation_by_luma`, `highlight_desaturate`, `hue_preserving_clip`. **In
-`_SKIP_FOR_NOW/color_grade/`:** the basic grades (`saturation`, `exposure`, `contrast`,
+`WORK IN PROGRESS/color_grade/`:** the basic grades (`saturation`, `exposure`, `contrast`,
 `lift_gamma_gain`), all the log-curve conversion pairs (sRGB / Cineon / LogC / ACEScct), and
 `cosine_palette`.
 
@@ -161,8 +161,8 @@ black→white). Defaults reproduce the original grayscale.
 | `highlight_desaturate` | roll over-sat highlights toward white | Front 1 | `thr` 1.0, `soft` 1.0, `amount` 1.0 |
 | `hue_preserving_clip` | clamp to ceiling without hue twist | Front 1 | `ceiling` 1.0 |
 
-### `_UPLOADED/3d_position_tools/`
-**In `_SKIP_FOR_NOW/` (loose at its root):** `box_matte`, `normal_renormalize`,
+### `Uploaded to Logik-Portal/3d_position_tools/`
+**In `WORK IN PROGRESS/` (loose at its root):** `box_matte`, `normal_renormalize`,
 `position_range_remap`. The other six are uploaded.
 
 | File | Nuke origin | Inputs needed | Variables (defaults) |
@@ -177,8 +177,8 @@ black→white). Defaults reproduce the original grayscale.
 | `normal_to_facing` | facing/rim ratio from a view-space normal | Front 1 = view-space normal | `rim` 0.0, `falloff` 1.0 |
 | `position_range_remap` | remap a P pass into 0..1 per-axis bbox | Front 1 = P pass | `minX/maxX/minY/maxY/minZ/maxZ` ±1 |
 
-### `_UPLOADED/depth_tools/`
-**In `_SKIP_FOR_NOW/depth_tools/`:** `depth_contours`, `depth_dof_mask`. The other seven are
+### `Uploaded to Logik-Portal/depth_tools/`
+**In `WORK IN PROGRESS/depth_tools/`:** `depth_contours`, `depth_dof_mask`. The other seven are
 uploaded.
 
 **Convention: depth always arrives on Matte 1 (`m1`).** Defaults assume depth normalised
@@ -198,8 +198,8 @@ connected (it is — depth lives there).
 | `depth_posterize` | quantize depth into flat bands | Matte 1 = depth | `steps` 8 |
 | `depth_grade` | gain ramps with distance (near→far) | Front 1 = beauty, Matte 1 = depth | `near` 0, `far` 1, `gainNear` 1.0, `gainFar` 0.3 |
 
-### `_UPLOADED/aov_tools/`
-**In `_SKIP_FOR_NOW/` (loose at its root):** `id_isolate`. The rest are uploaded.
+### `Uploaded to Logik-Portal/aov_tools/`
+**In `WORK IN PROGRESS/` (loose at its root):** `id_isolate`. The rest are uploaded.
 
 Pairwise render-pass math. With only 2 RGB inputs, **chain nodes** to rebuild a full
 beauty: each node's Result becomes the next node's Front 1 (the running sum). Light-pass
@@ -248,8 +248,8 @@ Grade any single pass in isolation by adjusting that node's variables.
 Generators that output a 0..1 **ST/UV map** (red = U, green = V) to feed an **STMap node** —
 they don't warp the image themselves. `nx`/`ny` normalise by half-width so radial distortion
 stays isotropic at any aspect ratio. **`uv_transform` and `anamorphic_unsqueeze` moved to
-`_UPLOADED/stmap_generators/`; `lens_distort` and `lens_undistort` are in
-`_SKIP_FOR_NOW/uv_distortion/`** (the uploaded `lens_distort_map` covers the distort case and
+`Uploaded to Logik-Portal/stmap_generators/`; `lens_distort` and `lens_undistort` are in
+`WORK IN PROGRESS/uv_distortion/`** (the uploaded `lens_distort_map` covers the distort case and
 adds `squeeze`).
 
 | File | Use | Inputs needed | Variables (defaults) |
@@ -259,8 +259,8 @@ adds `squeeze`).
 | `anamorphic_unsqueeze` | horizontal unsqueeze | none (→ STMap) | `squeeze` 2.0 |
 | `uv_transform` | zoom/pan a source | none (→ STMap) | `zoom` 1.0, `panX/panY` 0.0 |
 
-### `noise/` (split across `_UPLOADED/` and `_SKIP_FOR_NOW/`)
-**Uploaded:** the four `voronoi*` setups. **In `_SKIP_FOR_NOW/noise/`:** `noise_cells`,
+### `noise/` (split across `Uploaded to Logik-Portal/` and `WORK IN PROGRESS/`)
+**Uploaded:** the four `voronoi*` setups. **In `WORK IN PROGRESS/noise/`:** `noise_cells`,
 `noise_value`, `noise_fbm`.
 
 Procedural noise driven by x/y (the node has no user functions, so noise is inlined).
@@ -277,8 +277,8 @@ drift/evolve** the noise over time (they're no longer fixed frames).
 | `voronoi_manhattan` | diamond/blocky cells (taxicab metric) | none | `scale` 80, `seed` 0, `jitter` 1.0 |
 | `voronoi_chebyshev` | square cells (chessboard metric) | none | `scale` 80, `seed` 0, `jitter` 1.0 |
 
-### `_UPLOADED/shapes/` (was `sdf_shapes/`)
-All uploaded; `sdf_lattice` now lives in `_UPLOADED/pattern_generator/`.
+### `Uploaded to Logik-Portal/shapes/` (was `sdf_shapes/`)
+All uploaded; `sdf_lattice` now lives in `Uploaded to Logik-Portal/pattern_generator/`.
 
 Anti-aliased shape mattes around Centre (size in px, `soft` = edge width). Centre defaults
 to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
@@ -297,8 +297,8 @@ to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
 `hollow` (box / rounded box / polygon): 0 = solid, increase toward 1 to cut out the middle
 (outer edge stays fixed). `sdf_circle` → use `sdf_ring` for the hollow version.
 
-### `hsv_color/` (split across `_UPLOADED/` and `_SKIP_FOR_NOW/`)
-**In `_SKIP_FOR_NOW/hsv_color/`:** `chroma_key`, `sat_matte`. The rest are uploaded. Note
+### `hsv_color/` (split across `Uploaded to Logik-Portal/` and `WORK IN PROGRESS/`)
+**In `WORK IN PROGRESS/hsv_color/`:** `chroma_key`, `sat_matte`. The rest are uploaded. Note
 **`color_replace` was renamed `hsv_color_replace`** for the Portal upload.
 
 | File | Use | Inputs needed | Variables (defaults) |
@@ -313,7 +313,7 @@ to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
 | `split_tone` | tint shadows vs highlights by luma | Front 1 | `shadowHue` 0.58, `highHue` 0.08, `shadowAmt` 0.1, `highAmt` 0.1, `balance` 0.0 |
 | `sat_matte` | matte from a saturation window | Front 1 | `satLow` 0.15, `satHigh` 1.0, `soft` 0.05, `valMin` 0.0 |
 
-### `_SKIP_FOR_NOW/matte_combine/`
+### `WORK IN PROGRESS/matte_combine/`
 All 11 held back from the Portal (Flame covers these natively) — still valid setups.
 
 | File | Use | Inputs needed | Variables (defaults) |
@@ -330,7 +330,7 @@ All 11 held back from the Portal (Flame covers these natively) — still valid s
 | `matte_screen_multiply` | soft screen/multiply combine | Matte 1 + Matte 2 | `mode` 1.0 (1=screen, 0=multiply) |
 | `matte_falloff_ramp` | feather a matte by remapping (no blur) | Matte 1 | `lo` 0.0, `hi` 1.0, `gamma` 1.0 |
 
-### `_UPLOADED/utility/`
+### `Uploaded to Logik-Portal/utility/`
 | File | Nuke origin | Inputs needed | Variables (defaults) |
 |------|-------------|---------------|----------------------|
 | `stmap` | ST/UV map `(x+0.5)/width` | none (generator) | — |
@@ -338,9 +338,9 @@ All 11 held back from the Portal (Flame covers these natively) — still valid s
 | `uv_test_chart` | UV/lens calibration chart (ramp + grid + crosshair) | none (generator) | `gridN` 10, `lineW` 0.002 |
 
 ## Unconventional / experimental setups
-The categories below push Pixel Expression past the usual Nuke-derived toolkit: per-pixel **fractals**, **map-generators** that feed a downstream node, painted **control surfaces**, **stylization**, analytic **optics/physics**, and in-comp **diagnostics**. Everything here that sits in `_UPLOADED/` is **verified to work in Flame 2027.1** and on the Logik Portal (2026-07-22); the folder names changed in the upload — `fractals` (+ `radar_sweep` + `digital_counter`) → `just_for_fun/`, `control_surfaces` → `experimental/`, `stylization` → `stylize/`, and `optics_physics` was dissolved (only `thin_film` remains under that name, in `_SKIP_FOR_NOW/`).
+The categories below push Pixel Expression past the usual Nuke-derived toolkit: per-pixel **fractals**, **map-generators** that feed a downstream node, painted **control surfaces**, **stylization**, analytic **optics/physics**, and in-comp **diagnostics**. Everything here that sits in `Uploaded to Logik-Portal/` is **verified to work in Flame 2027.1** and on the Logik Portal (2026-07-22); the folder names changed in the upload — `fractals` (+ `radar_sweep` + `digital_counter`) → `just_for_fun/`, `control_surfaces` → `experimental/`, `stylization` → `stylize/`, and `optics_physics` was dissolved (only `thin_film` remains under that name, in `WORK IN PROGRESS/`).
 
-### `_UPLOADED/just_for_fun/` (was `fractals/` + strays)
+### `Uploaded to Logik-Portal/just_for_fun/` (was `fractals/` + strays)
 Escape-time fractals — **architecture-limited to 8 iterations** (shallow; texture, not
 deep-zoom) — plus `radar_sweep` (ex-`optics_physics/`) and `digital_counter`
 (ex-`stylization/`).
@@ -353,7 +353,7 @@ deep-zoom) — plus `radar_sweep` (ex-`optics_physics/`) and `digital_counter`
 | `radar_sweep` | Rotating radar/oscilloscope sweep around Centre with an exponential afterglow trailing behind the line, plus faint range rings | none (uses Centre) | `sweep` (animated), `decay` (3.0), `ringFreq` (0.02), `glowR` (0.1), `glowG` (1.0), `glowB` (0.3) |
 | `digital_counter` | Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node | none (generator; composite over your plate) | `digit` (0.0), `digScale` (150), `thick` (0.1), `hw` (0.42), `hh` (0.42), `lit` (1.0) |
 
-### `_UPLOADED/stmap_generators/`
+### `Uploaded to Logik-Portal/stmap_generators/`
 Each OUTPUTS a map for a **downstream node** (STMap, or a variable-blur/Defocus for `coc_from_depth`/`thin_lens_coc`) — see each `.md` Notes. The folder also gained `uv_transform` and `anamorphic_unsqueeze` (rows in the `uv_distortion` section above).
 
 | File | What it does | Inputs needed | Variables (defaults) |
@@ -367,7 +367,7 @@ Each OUTPUTS a map for a **downstream node** (STMap, or a variable-blur/Defocus 
 | `lens_distort_map` | Radial barrel/pincushion ST map (`k1`,`k2`) with anamorphic `squeeze` around Centre. | none (generator → STMap) | `k1` (0.1), `k2` (0.0), `squeeze` (1.0) |
 | `polar_to_cartesian` | Polar/rectangular ST map around Centre | none (generator → STMap) | `twist` (0.0), `zoom` (1.0) |
 
-### `_UPLOADED/experimental/` (was `control_surfaces/`)
+### `Uploaded to Logik-Portal/experimental/` (was `control_surfaces/`)
 Front 2 / Matte 2 as a painted control surface; plus the two-outputs-at-once trick.
 
 | File | What it does | Inputs needed | Variables (defaults) |
@@ -377,9 +377,9 @@ Front 2 / Matte 2 as a painted control surface; plus the two-outputs-at-once tri
 | `dual_output_depth` | ONE node, TWO products | Front 1 (beauty) + Matte 1 (depth) | `near` (0.0), `far` (1.0), `strength` (1.0), `tintR` (0.6), `tintG` (0.8), `tintB` (1.4) |
 | `painted_grade` | Grades Front 1 using a PAINTED Front 2 control map | Front 1 (image) + Front 2 (control map); Matte 1 optional (passes through) | `expRange` (2.0), `hueRange` (1.0), `satRange` (1.0) |
 
-### `_UPLOADED/stylize/` (was `stylization/`)
+### `Uploaded to Logik-Portal/stylize/` (was `stylization/`)
 Per-pixel looks on Front 1 (no neighbour gather). `digital_counter` moved to
-`just_for_fun/` (row above); **`palette_quantize` is in `_SKIP_FOR_NOW/stylization/`**.
+`just_for_fun/` (row above); **`palette_quantize` is in `WORK IN PROGRESS/stylization/`**.
 
 | File | What it does | Inputs needed | Variables (defaults) |
 |------|--------------|---------------|----------------------|
@@ -391,15 +391,15 @@ Per-pixel looks on Front 1 (no neighbour gather). `digital_counter` moved to
 
 ### `optics_physics/` (folder dissolved)
 Analytic physics/optics generators; animate the keyframed var noted in each `.md`.
-`moire` is now in `_UPLOADED/pattern_generator/`, `radar_sweep` in `_UPLOADED/just_for_fun/`
-(row above), and `thin_film` in `_SKIP_FOR_NOW/optics_physics/`.
+`moire` is now in `Uploaded to Logik-Portal/pattern_generator/`, `radar_sweep` in `Uploaded to Logik-Portal/just_for_fun/`
+(row above), and `thin_film` in `WORK IN PROGRESS/optics_physics/`.
 
 | File | What it does | Inputs needed | Variables (defaults) |
 |------|--------------|---------------|----------------------|
 | `moire` | Beat pattern of two near-identical line gratings (`freqA` vs `freqB`) — an intentional moiré. | none | `freqA` (0.08), `freqB` (0.085), + colours |
 | `thin_film` | Thin-film interference iridescence | none (uses Centre) | `thickness` (1.0), `scale` (0.004), `shift` (animated) |
 
-### `_UPLOADED/diagnostics/`
+### `Uploaded to Logik-Portal/diagnostics/`
 In-comp inspection tools on Front 1.
 
 | File | What it does | Inputs needed | Variables (defaults) |

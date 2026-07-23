@@ -15,14 +15,14 @@ Portal** (see "Library layout" below). Committing and pushing to `origin` is nor
 ## ⭐ Library layout since the Logik Portal upload (2026-07-22)
 The user uploaded the library to the Logik Portal and reorganized `setups/` by publication
 status — **this layout is hand-managed by the user; do not "fix" it back to flat categories**:
-- **`setups/_UPLOADED/`** — **111 setups, ALL verified to work in Flame 2027.1** and published
+- **`setups/Uploaded to Logik-Portal/`** — **111 setups, ALL verified to work in Flame 2027.1** and published
   to the Logik Portal. Sixteen folders; several categories were renamed/merged from the old
   flat layout: `alpha_matte_tools`→`matte_tools`, `sdf_shapes`→`shapes`,
   `stylization`→`stylize`, `pattern_generators`→`pattern_generator`,
   `control_surfaces`→`experimental`, and a new `just_for_fun` (the 3 fractals + `radar_sweep`
   + `digital_counter`). Cross-moves: `moire` + `sdf_lattice` → `pattern_generator`;
   `uv_transform` + `anamorphic_unsqueeze` → `stmap_generators`.
-- **`setups/_SKIP_FOR_NOW/`** — **45 setups deemed not worth uploading** (largely basics Flame
+- **`setups/WORK IN PROGRESS/`** — **45 setups deemed not worth uploading** (largely basics Flame
   covers natively: `matte_combine/` set-ops, basic `color_grade/` ops and log-curve
   conversions, simple `pattern_generators/`, scalar `noise/`, `uv_distortion/`
   lens_distort/undistort, plus a few loose files at its root). Not broken — just held back.
@@ -34,7 +34,7 @@ status — **this layout is hand-managed by the user; do not "fix" it back to fl
 - **The generator now writes in place:** `tools/generate_setups.py` indexes the current
   on-disk location of every `.pixel_expression_node` and regenerates each setup (and its
   `.md`) wherever it currently lives. Only a brand-new setup falls back to
-  `setups/<category>/` — sort it into `_UPLOADED`/`_SKIP_FOR_NOW` by hand (ask the user
+  `setups/<category>/` — sort it into `Uploaded to Logik-Portal`/`WORK IN PROGRESS` by hand (ask the user
   where it belongs). Regeneration is verified byte-identical against the uploaded files.
 
 ## Commands
@@ -68,7 +68,7 @@ to the new format**. See "File format facts" and "Live-Flame status" below for t
   generator writes each setup **in place** at its current on-disk location, so
   `tools/generate_setups.py` remains the single source of truth with no duplication risk.
 - **The Live-Flame eval (reset to 0/156 by PR245) is now CLOSED** — superseded by the
-  2026-07-22 Logik Portal upload: everything in `setups/_UPLOADED/` (111) is verified in Flame
+  2026-07-22 Logik Portal upload: everything in `setups/Uploaded to Logik-Portal/` (111) is verified in Flame
   2027.1. History lives in `documentation/live_flame_eval_progress.md`.
 
 ## Golden rule: never hand-edit the setup files
@@ -78,8 +78,8 @@ files and their companion `.md` docs are generated from it.
   `EXPECTS` entries (the script warns if `DOCS`/`EXPECTS` are missing). Optionally add a
   `NOTES` entry — long-form Markdown appended to the setup's `.md` under a `## Notes`
   heading (workflow, recipes, gotchas); all 156 setups currently have one. A **brand-new**
-  setup is written to the `setups/<category>/` fallback — move it into `_UPLOADED/` or
-  `_SKIP_FOR_NOW/` by hand (the user decides which; existing setups regenerate in place).
+  setup is written to the `setups/<category>/` fallback — move it into `Uploaded to Logik-Portal/` or
+  `WORK IN PROGRESS/` by hand (the user decides which; existing setups regenerate in place).
 - Regenerate: `python3 tools/generate_setups.py`
 - Validate: `python3 tools/validate_setups.py` (must be **0 errors**; reserved-name
   collisions — any var/formula shadowing a built-in/input — plus undefined identifiers,
@@ -98,8 +98,8 @@ files and their companion `.md` docs are generated from it.
   drift-check, and sync counts + Live-Flame status across the hand-maintained docs).
 - `README.md` — human index (per-folder tables, colour-management, caveats).
 - `setups/` — the 156 generated `.pixel_expression_node` files + companion `.md` docs, split
-  by publication status: `_UPLOADED/` (111, verified in Flame 2027.1, on the Logik Portal, 16
-  category subfolders) and `_SKIP_FOR_NOW/` (45 held back). See "Library layout" above.
+  by publication status: `Uploaded to Logik-Portal/` (111, verified in Flame 2027.1, on the Logik Portal, 16
+  category subfolders) and `WORK IN PROGRESS/` (45 held back). See "Library layout" above.
 - `documentation/pixelexpression1.pixel_expression_node` — a real Flame-saved file kept as a
   worked example of the **old pre-PR245** serialization (the original format doc was
   reverse-engineered from it; it no longer loads in the updated node — the current-format
@@ -206,17 +206,17 @@ seven-segment builders `_seven_seg_expr()`/`_seg_bar()`/`_seg_eq()` + `_SEG_ON`/
 section. `stylization/` setups are collected in a `_STYLIZATION` list appended to `SETUPS`.
 
 ## Folders (156 setups, all under `setups/`)
-**`_UPLOADED/` (111 — verified in Flame 2027.1, published to the Logik Portal):**
+**`Uploaded to Logik-Portal/` (111 — verified in Flame 2027.1, published to the Logik Portal):**
 `3d_position_tools` `animated_generators` `aov_tools` `color_grade` `depth_tools`
 `diagnostics` `experimental` `hsv_color` `just_for_fun` `matte_tools` `noise`
 `pattern_generator` `shapes` `stmap_generators` `stylize` `utility`
 
-**`_SKIP_FOR_NOW/` (45 — held back from the Portal, not broken):**
+**`WORK IN PROGRESS/` (45 — held back from the Portal, not broken):**
 `color_grade` `depth_tools` `hsv_color` `matte_combine` `noise` `optics_physics`
 `pattern_generators` `stylization` `uv_distortion` + 4 loose files at its root
 (`box_matte`, `id_isolate`, `normal_renormalize`, `position_range_remap`).
 
-Notes on the trickier `_UPLOADED/` folders:
+Notes on the trickier `Uploaded to Logik-Portal/` folders:
 - `just_for_fun` — the escape-time Mandelbrot/Julia/Burning-Ship (**architecture-limited to 8
   iterations**: the node has no reassignable state; the only way to iterate is the 4-formula
   chain, and inlining a complex square expands the string ~8× per step, so K=2/formula is the
@@ -240,12 +240,12 @@ the library — so if you edit one, they're the most likely to need a fresh live
 
 ## Live-Flame status
 - **✅ The eval is CLOSED — superseded by the Logik Portal upload (2026-07-22).** Everything in
-  `setups/_UPLOADED/` (111 setups) **is verified to work in Flame 2027.1** and published. That
+  `setups/Uploaded to Logik-Portal/` (111 setups) **is verified to work in Flame 2027.1** and published. That
   includes 13 of the 15 setups revoked by the 2026-07-21 bug-fix pass, the fixed hue-matrix
   family (`hue_rotate`/`hsl_targeted`/`hsv_color_replace`), `normal_relight`, and the animated
-  channels (`metaball_ring`; `thin_film` is in `_SKIP_FOR_NOW/`). The per-setup tracker
+  channels (`metaball_ring`; `thin_film` is in `WORK IN PROGRESS/`). The per-setup tracker
   (`documentation/live_flame_eval_progress.md`) is now historical.
-- **The 45 in `setups/_SKIP_FOR_NOW/` were deemed not worth uploading** (mostly basics Flame
+- **The 45 in `setups/WORK IN PROGRESS/` were deemed not worth uploading** (mostly basics Flame
   covers natively) — not broken, just held back. Their verification state is frozen at what the
   tracker last recorded; the only bug-fixed setups never re-verified in Flame are `radial_ramp`
   and `palette_quantize` (both skipped — only matters if they're ever promoted to the Portal).
@@ -269,7 +269,7 @@ the library — so if you edit one, they're the most likely to need a fresh live
   `centre`/`E`/`PI` or input `r1`… used as a variable/formula — the validator catches this), or a
   format drift from the generator.
 - **Outstanding next steps (nothing blocking):** the eval is done. Possible future work:
-  (1) promote `_SKIP_FOR_NOW/` setups to the Portal if the user changes their mind — if
+  (1) promote `WORK IN PROGRESS/` setups to the Portal if the user changes their mind — if
   `radial_ramp` or `palette_quantize` are promoted, re-verify them VISUALLY first (their
   2026-07-21 bug-fixes were never eyeballed in Flame; the tracker's bug-fix section says what
   to look for); (2) new setups from `documentation/setup_expansion_backlog.md` — Tiers 1–4 are

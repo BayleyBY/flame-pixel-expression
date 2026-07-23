@@ -3,18 +3,18 @@
 ## ✅ EVAL CLOSED — superseded by the Logik Portal upload (2026-07-22)
 The user published the library to the **Logik Portal** and reorganized `setups/` by publication
 status. This supersedes the per-setup checklist below (kept as history):
-- **`setups/_UPLOADED/` — 111 setups, ALL verified to work in Flame 2027.1** and published to
+- **`setups/Uploaded to Logik-Portal/` — 111 setups, ALL verified to work in Flame 2027.1** and published to
   the Logik Portal. This closes every open item that landed there — including **13 of the 15
   setups revoked by the 2026-07-21 bug-fix pass** (sdf_rounded_box, sdf_polygon, starfield,
   halftone, crosshatch, zone_system_posterize, st_uv_map_inspector, kaleidoscope_map,
   mandelbrot, burning_ship, painted_grade, dual_output_depth, alpha_crunch) and the fixed
   hue-matrix family (hue_rotate, hsl_targeted, hsv_color_replace) and normal_relight.
-- **`setups/_SKIP_FOR_NOW/` — 45 setups deemed not worth uploading** (largely basics Flame
+- **`setups/WORK IN PROGRESS/` — 45 setups deemed not worth uploading** (largely basics Flame
   covers natively: the matte_combine set-ops, basic color_grade ops + log-curve conversions,
   simple patterns, scalar noise, lens_distort/undistort, etc.). Not broken — just held back.
   Their in-Flame status is whatever the checklist below last said; the only revoked setups
   never re-verified are here: **`radial_ramp`** and **`palette_quantize`**.
-- **Layout/renames done during the upload:** categories were renamed/merged inside `_UPLOADED/`
+- **Layout/renames done during the upload:** categories were renamed/merged inside `Uploaded to Logik-Portal/`
   (`alpha_matte_tools`→`matte_tools`, `sdf_shapes`→`shapes`, `stylization`→`stylize`,
   `pattern_generators`→`pattern_generator`, `control_surfaces`→`experimental`,
   `fractals`+`radar_sweep`+`digital_counter`→`just_for_fun`; `moire`+`sdf_lattice`→

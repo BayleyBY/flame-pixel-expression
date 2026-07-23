@@ -12,7 +12,7 @@ Sync this project's generated files and hand-maintained docs after a change to
 are outputs.
 
 **Layout note (2026-07-22):** the `setups/` folder tree is HAND-MANAGED by the user
-(`_UPLOADED/` = verified in Flame 2027.1 + on the Logik Portal; `_SKIP_FOR_NOW/` = held back).
+(`Uploaded to Logik-Portal/` = verified in Flame 2027.1 + on the Logik Portal; `WORK IN PROGRESS/` = held back).
 The generator regenerates each setup **in place** at its current on-disk location — do not
 move files back to flat `setups/<category>/` folders. A brand-new setup lands in the
 `setups/<category>/` fallback; the USER sorts it into the layout.
@@ -51,7 +51,7 @@ move files back to flat `setups/<category>/` folders. A brand-new setup lands in
 
 7. **Update the Live-Flame status** in BOTH `CLAUDE.md` (the "## Live-Flame status" section)
    and the "Live-Flame status" note in `README.md`. The rolling eval is CLOSED (2026-07-22
-   Logik Portal upload — everything in `_UPLOADED/` is verified in Flame 2027.1); only touch
+   Logik Portal upload — everything in `Uploaded to Logik-Portal/` is verified in Flame 2027.1); only touch
    these when a setup's GLSL changes (its verified status is then stale until the user
    re-checks it in Flame) or when the user moves/promotes/verifies setups. Don't claim a setup
    is verified unless the user actually confirmed it.

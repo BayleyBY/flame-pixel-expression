@@ -17,7 +17,7 @@ OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 W, H, SX, SY = 1920, 1080, 16, 9
 
 # The setups/ layout is HAND-MANAGED since the Logik Portal upload (2026-07-22):
-# _UPLOADED/<folder>/ = verified in Flame 2027.1 + published; _SKIP_FOR_NOW/ = held back.
+# Uploaded to Logik-Portal/<folder>/ = verified in Flame 2027.1 + published; WORK IN PROGRESS/ = held back.
 # Folder names there no longer match CATEGORY, so regeneration writes each setup IN
 # PLACE — wherever its .pixel_expression_node currently lives on disk. Only a brand-new
 # setup (no existing file) falls back to setups/<category>/; sort it into the layout by
