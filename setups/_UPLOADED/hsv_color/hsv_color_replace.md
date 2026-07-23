@@ -1,4 +1,4 @@
-# color_replace
+# hsv_color_replace
 
 **What it does:** Shifts hues near `srcHue` toward `dstHue`, leaving the rest.
 

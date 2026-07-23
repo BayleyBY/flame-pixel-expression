@@ -1,15 +1,27 @@
 # Pixel Expression Setup Library
 
-**156 ready-to-load `.pixel_expression_node` setups** — 83 translating the best Nuke
-expression examples to Flame GLSL, plus 73 **unconventional / experimental / utility** setups
-(fractals, ST-map generators, painted control surfaces, stylization, optics/physics,
-diagnostics, and a 2026 expansion of scalar-mappers, calibration charts & a physical lens CoC).
+**156 ready-to-load `.pixel_expression_node` setups** translating the best Nuke expression
+examples to Flame GLSL, plus **unconventional / experimental / utility** setups (fractals,
+ST-map generators, painted control surfaces, stylization, optics/physics, diagnostics).
 Load via the node's setup browser. **Connect inputs in Batch** — wiring isn't stored in these
 files.
 
+**Requires Autodesk Flame 2027.1+** — the release that introduced the Pixel Expression node.
+
+**The library is split by publication status (2026-07-22):**
+- **`setups/_UPLOADED/` — 111 setups, all verified to work in Flame 2027.1 and published to
+  the Logik Portal.**
+- **`setups/_SKIP_FOR_NOW/` — 45 setups held back from the Portal** (mostly basics Flame
+  covers natively — set-op mattes, simple grades, log-curve conversions). They pass the
+  offline checkers; they just weren't deemed worth uploading.
+
+The per-folder tables below note where each setup lives.
+
 Tooling (in `tools/`):
 - `tools/generate_setups.py` — single source of truth; edit a dict + the `CATEGORY` map and
-  re-run to regenerate every file. Handles XML-escaping, slot padding, and folders.
+  re-run to regenerate every file. Handles XML-escaping, slot padding, and folders — and
+  regenerates each setup **in place** at its current on-disk location, so the hand-managed
+  `_UPLOADED`/`_SKIP_FOR_NOW` layout survives a regenerate.
 - `tools/validate_setups.py` — sanity sweep: XML well-formedness, slot counts, balanced parens,
   reserved-name collisions, and undefined-identifier checks (catches variable typos).
   Run after any edit; current status: **156 setups, 0 errors, 0 warnings**.
@@ -18,15 +30,13 @@ Tooling (in `tools/`):
   can't. Current status: **all 156 compile, 0 errors**. A proxy for — not a replacement for — a
   real in-Flame load.
 
-**Live-Flame status:** a **Pixel Expression node update (PR245, 2026-07-07) changed the save-file
-format**, so all setups were regenerated to the new format and the in-Flame verification was
-**reset** — prior approvals were against the old format and no longer load. All 156 pass the
-validator and the offline GLSL compile-check; a fresh in-Flame load pass is underway (**Phases 1 & 2
-complete** — all 16 highest-risk setups plus the unconventional/experimental folders — with the
-lower-risk basics being batch-confirmed folder-by-folder; ~96/156 confirmed: 111 as of the last
-session minus 15 passes revoked by a 2026-07-21 semantic bug-fix pass that changed 17 setups'
-GLSL — resume at `aov_tools/`, then re-verify the revoked list). Live count + queue:
-`documentation/live_flame_eval_progress.md`.
+**Live-Flame status:** ✅ **done for everything uploaded.** A Pixel Expression node update
+(PR245, 2026-07-07) changed the save-file format, so the whole library was regenerated to the
+new format and re-verified from scratch; that pass concluded with the **2026-07-22 Logik Portal
+upload — all 111 setups in `_UPLOADED/` are verified to work in Flame 2027.1**. The 45 in
+`_SKIP_FOR_NOW/` pass the validator and offline GLSL compile-check (as do all 156) but weren't
+uploaded, and two of them (`radial_ramp`, `palette_quantize`) carry 2026-07-21 bug-fixes that
+were never re-verified in Flame. Eval history: `documentation/live_flame_eval_progress.md`.
 
 Every setup also has a companion `<name>.md` next to it with **What it does / Use case /
 Inputs / Expects (colour space) / Variables** — generated from the same script, so the
@@ -43,20 +53,23 @@ and reference docs under `documentation/`:
 
 ```
 setups/
-  alpha_matte_tools/    pattern_generators/   animated_generators/   color_grade/
-  3d_position_tools/    depth_tools/          aov_tools/             uv_distortion/
-  noise/                sdf_shapes/           hsv_color/             matte_combine/
-  utility/
-  # unconventional / experimental:
-  fractals/             stmap_generators/     control_surfaces/      stylization/
-  optics_physics/       diagnostics/
+  _UPLOADED/     # 111 — verified in Flame 2027.1, on the Logik Portal
+    3d_position_tools/  animated_generators/  aov_tools/         color_grade/
+    depth_tools/        diagnostics/          experimental/      hsv_color/
+    just_for_fun/       matte_tools/          noise/             pattern_generator/
+    shapes/             stmap_generators/     stylize/           utility/
+  _SKIP_FOR_NOW/ # 45 — held back from the Portal (not broken)
+    color_grade/        depth_tools/          hsv_color/         matte_combine/
+    noise/              optics_physics/       pattern_generators/ stylization/
+    uv_distortion/      + 4 loose files (box_matte, id_isolate,
+                          normal_renormalize, position_range_remap)
 tools/         generate_setups.py  validate_setups.py  glsl_compile_check.py
 documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
                pixelexpression1.pixel_expression_node (OLD pre-PR245 format example;
                current-format reference saves are in PR245/)
 ```
 
-### `alpha_matte_tools/`
+### `_UPLOADED/matte_tools/` (was `alpha_matte_tools/`)
 | File | Nuke origin | Inputs needed | Variables (defaults) |
 |------|-------------|---------------|----------------------|
 | `alpha_crunch` | crunch alpha | Matte 1 | `thresh` 0.1 |
@@ -66,7 +79,12 @@ documentation/ file-format, Nuke→Flame translations, cheatsheet, node docs,
 | `difference_matte` | clip vs clean-plate diff key | Front 1 + Front 2 | `gain` 5.0 |
 | `garbage_gradient_matte` | rotated linear-gradient garbage matte | none (uses Centre) | `angle` 0.0, `offset` 0.0, `feather` 100 |
 
-### `pattern_generators/`
+### `_UPLOADED/pattern_generator/` + `_SKIP_FOR_NOW/pattern_generators/`
+Split by upload status — **in `_SKIP_FOR_NOW/pattern_generators/`:** `radial_ramp`, `rings`,
+`rays`, `noise_random`, `wood_grain`, `marble`. The rest are uploaded, and
+`_UPLOADED/pattern_generator/` also gained `moire` (from `optics_physics/`) and `sdf_lattice`
+(from `sdf_shapes/`) — their rows stay in their original tables below.
+
 | File | Nuke origin | Inputs needed | Variables (defaults) |
 |------|-------------|---------------|----------------------|
 | `radial_ramp` | radial gradient / vignette | none (uses Centre) | `radius` 600, `softness` 1.0, + colours |
@@ -94,7 +112,7 @@ luminance-only result); the exceptions are `wood_grain` (brown/tan) and `marble`
 which ship with thematic colour defaults. OutMatte still carries the raw 0..1 pattern mask. (Numeric
 fields step in tenths — use **Space + Drag** for finer colour values.)
 
-### `animated_generators/`
+### `_UPLOADED/animated_generators/`
 Keyframed `t` variable drives motion — **scrub frames 1–100** to see it. `t` is animated
 as a 2-key channel (frame 1 → 0, frame 100 → end); edit those keys to change speed/length.
 
@@ -113,7 +131,13 @@ as a 2-key channel (frame 1 → 0, frame 100 → end); edit those keys to change
 Two colours work exactly as in `pattern_generators/`: `aR/aG/aB` → `bR/bG/bB` (default
 black→white). Defaults reproduce the original grayscale.
 
-### `color_grade/`
+### `color_grade/` (split across `_UPLOADED/` and `_SKIP_FOR_NOW/`)
+**Uploaded:** `despill_green`, `voxelize`, `white_balance`, `lens_vignette`,
+`saturation_by_luma`, `highlight_desaturate`, `hue_preserving_clip`. **In
+`_SKIP_FOR_NOW/color_grade/`:** the basic grades (`saturation`, `exposure`, `contrast`,
+`lift_gamma_gain`), all the log-curve conversion pairs (sRGB / Cineon / LogC / ACEScct), and
+`cosine_palette`.
+
 | File | Nuke origin | Inputs needed | Variables (defaults) |
 |------|-------------|---------------|----------------------|
 | `despill_green` | green despill | Front 1 | `spill` 1.0 (0=off) |
@@ -137,7 +161,10 @@ black→white). Defaults reproduce the original grayscale.
 | `highlight_desaturate` | roll over-sat highlights toward white | Front 1 | `thr` 1.0, `soft` 1.0, `amount` 1.0 |
 | `hue_preserving_clip` | clamp to ceiling without hue twist | Front 1 | `ceiling` 1.0 |
 
-### `3d_position_tools/`
+### `_UPLOADED/3d_position_tools/`
+**In `_SKIP_FOR_NOW/` (loose at its root):** `box_matte`, `normal_renormalize`,
+`position_range_remap`. The other six are uploaded.
+
 | File | Nuke origin | Inputs needed | Variables (defaults) |
 |------|-------------|---------------|----------------------|
 | `pmatte_sphere` | 3D position matte | Front 1 = P-world pass | `cenR/cenG/cenB` 0, `prad` 1.0 |
@@ -150,7 +177,10 @@ black→white). Defaults reproduce the original grayscale.
 | `normal_to_facing` | facing/rim ratio from a view-space normal | Front 1 = view-space normal | `rim` 0.0, `falloff` 1.0 |
 | `position_range_remap` | remap a P pass into 0..1 per-axis bbox | Front 1 = P pass | `minX/maxX/minY/maxY/minZ/maxZ` ±1 |
 
-### `depth_tools/`
+### `_UPLOADED/depth_tools/`
+**In `_SKIP_FOR_NOW/depth_tools/`:** `depth_contours`, `depth_dof_mask`. The other seven are
+uploaded.
+
 **Convention: depth always arrives on Matte 1 (`m1`).** Defaults assume depth normalised
 to 0..1 (`near` 0, `far` 1); for raw world-unit depth, set `near`/`far`/thresholds to your
 scene range. If *closer = larger* in your pass, swap `near`/`far`. OutMatte needs Matte 1
@@ -168,7 +198,9 @@ connected (it is — depth lives there).
 | `depth_posterize` | quantize depth into flat bands | Matte 1 = depth | `steps` 8 |
 | `depth_grade` | gain ramps with distance (near→far) | Front 1 = beauty, Matte 1 = depth | `near` 0, `far` 1, `gainNear` 1.0, `gainFar` 0.3 |
 
-### `aov_tools/`
+### `_UPLOADED/aov_tools/`
+**In `_SKIP_FOR_NOW/` (loose at its root):** `id_isolate`. The rest are uploaded.
+
 Pairwise render-pass math. With only 2 RGB inputs, **chain nodes** to rebuild a full
 beauty: each node's Result becomes the next node's Front 1 (the running sum). Light-pass
 math keeps Front 1's alpha (`matte = m1`).
@@ -212,10 +244,13 @@ Hard requirements / limits:
 as Front 1, with reflection as Front 2 (tint/expose it) → chain again for GI, emission, etc.
 Grade any single pass in isolation by adjusting that node's variables.
 
-### `uv_distortion/`
+### `uv_distortion/` (folder dissolved)
 Generators that output a 0..1 **ST/UV map** (red = U, green = V) to feed an **STMap node** —
 they don't warp the image themselves. `nx`/`ny` normalise by half-width so radial distortion
-stays isotropic at any aspect ratio.
+stays isotropic at any aspect ratio. **`uv_transform` and `anamorphic_unsqueeze` moved to
+`_UPLOADED/stmap_generators/`; `lens_distort` and `lens_undistort` are in
+`_SKIP_FOR_NOW/uv_distortion/`** (the uploaded `lens_distort_map` covers the distort case and
+adds `squeeze`).
 
 | File | Use | Inputs needed | Variables (defaults) |
 |------|-----|---------------|----------------------|
@@ -224,7 +259,10 @@ stays isotropic at any aspect ratio.
 | `anamorphic_unsqueeze` | horizontal unsqueeze | none (→ STMap) | `squeeze` 2.0 |
 | `uv_transform` | zoom/pan a source | none (→ STMap) | `zoom` 1.0, `panX/panY` 0.0 |
 
-### `noise/`
+### `noise/` (split across `_UPLOADED/` and `_SKIP_FOR_NOW/`)
+**Uploaded:** the four `voronoi*` setups. **In `_SKIP_FOR_NOW/noise/`:** `noise_cells`,
+`noise_value`, `noise_fbm`.
+
 Procedural noise driven by x/y (the node has no user functions, so noise is inlined).
 Every generator has a **`seed`** — change it for a different pattern, or **keyframe it to
 drift/evolve** the noise over time (they're no longer fixed frames).
@@ -239,7 +277,9 @@ drift/evolve** the noise over time (they're no longer fixed frames).
 | `voronoi_manhattan` | diamond/blocky cells (taxicab metric) | none | `scale` 80, `seed` 0, `jitter` 1.0 |
 | `voronoi_chebyshev` | square cells (chessboard metric) | none | `scale` 80, `seed` 0, `jitter` 1.0 |
 
-### `sdf_shapes/`
+### `_UPLOADED/shapes/` (was `sdf_shapes/`)
+All uploaded; `sdf_lattice` now lives in `_UPLOADED/pattern_generator/`.
+
 Anti-aliased shape mattes around Centre (size in px, `soft` = edge width). Centre defaults
 to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
 
@@ -257,20 +297,25 @@ to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
 `hollow` (box / rounded box / polygon): 0 = solid, increase toward 1 to cut out the middle
 (outer edge stays fixed). `sdf_circle` → use `sdf_ring` for the hollow version.
 
-### `hsv_color/`
+### `hsv_color/` (split across `_UPLOADED/` and `_SKIP_FOR_NOW/`)
+**In `_SKIP_FOR_NOW/hsv_color/`:** `chroma_key`, `sat_matte`. The rest are uploaded. Note
+**`color_replace` was renamed `hsv_color_replace`** for the Portal upload.
+
 | File | Use | Inputs needed | Variables (defaults) |
 |------|-----|---------------|----------------------|
 | `rgb_to_hsv` | RGB → HSV (H,S,V on R,G,B) | Front 1 | — |
 | `hsv_to_rgb` | HSV → RGB | Front 1 = HSV | — |
 | `hue_rotate` | luma-preserving hue shift | Front 1 | `hue` 0.0 |
 | `chroma_key` | matte by hue + min saturation | Front 1 | `keyHue` 0.33, `tol` 0.05, `soft` 0.05, `satMin` 0.15 |
-| `color_replace` | recolour one hue range | Front 1 | `srcHue` 0.33, `dstHue` 0.0, `tol` 0.06, `soft` 0.05 |
+| `hsv_color_replace` | recolour one hue range | Front 1 | `srcHue` 0.33, `dstHue` 0.0, `tol` 0.06, `soft` 0.05 |
 | `vibrance` | smart saturation (protects vivid + skin) | Front 1 | `vibrance` 0.0, `saturation` 1.0, `skinProtect` 0.0 |
 | `hsl_targeted` | dHue/dSat/dVal inside one hue band | Front 1 | `centerHue` 0.33, `bandWidth` 0.08, `soft` 0.05, `dHue` 0.0, `dSat` 0.0, `dVal` 0.0 |
 | `split_tone` | tint shadows vs highlights by luma | Front 1 | `shadowHue` 0.58, `highHue` 0.08, `shadowAmt` 0.1, `highAmt` 0.1, `balance` 0.0 |
 | `sat_matte` | matte from a saturation window | Front 1 | `satLow` 0.15, `satHigh` 1.0, `soft` 0.05, `valMin` 0.0 |
 
-### `matte_combine/`
+### `_SKIP_FOR_NOW/matte_combine/`
+All 11 held back from the Portal (Flame covers these natively) — still valid setups.
+
 | File | Use | Inputs needed | Variables (defaults) |
 |------|-----|---------------|----------------------|
 | `premult` | multiply RGB by matte | Front 1 + Matte 1 | — |
@@ -285,7 +330,7 @@ to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
 | `matte_screen_multiply` | soft screen/multiply combine | Matte 1 + Matte 2 | `mode` 1.0 (1=screen, 0=multiply) |
 | `matte_falloff_ramp` | feather a matte by remapping (no blur) | Matte 1 | `lo` 0.0, `hi` 1.0, `gamma` 1.0 |
 
-### `utility/`
+### `_UPLOADED/utility/`
 | File | Nuke origin | Inputs needed | Variables (defaults) |
 |------|-------------|---------------|----------------------|
 | `stmap` | ST/UV map `(x+0.5)/width` | none (generator) | — |
@@ -293,19 +338,23 @@ to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
 | `uv_test_chart` | UV/lens calibration chart (ramp + grid + crosshair) | none (generator) | `gridN` 10, `lineW` 0.002 |
 
 ## Unconventional / experimental setups
-The six categories below push Pixel Expression past the usual Nuke-derived toolkit: per-pixel **fractals**, **map-generators** that feed a downstream node, painted **control surfaces**, **stylization**, analytic **optics/physics**, and in-comp **diagnostics**. These folders were **load-confirmed in Flame in Phase 2 of the eval** (2026-07-07) — though a handful of individual setups were since revoked for re-verification by the 2026-07-21 bug-fix pass (see the Live-Flame note at the top and the tracker for the exact list).
+The categories below push Pixel Expression past the usual Nuke-derived toolkit: per-pixel **fractals**, **map-generators** that feed a downstream node, painted **control surfaces**, **stylization**, analytic **optics/physics**, and in-comp **diagnostics**. Everything here that sits in `_UPLOADED/` is **verified to work in Flame 2027.1** and on the Logik Portal (2026-07-22); the folder names changed in the upload — `fractals` (+ `radar_sweep` + `digital_counter`) → `just_for_fun/`, `control_surfaces` → `experimental/`, `stylization` → `stylize/`, and `optics_physics` was dissolved (only `thin_film` remains under that name, in `_SKIP_FOR_NOW/`).
 
-### `fractals/`
-Escape-time fractals — **architecture-limited to 8 iterations** (shallow; texture, not deep-zoom).
+### `_UPLOADED/just_for_fun/` (was `fractals/` + strays)
+Escape-time fractals — **architecture-limited to 8 iterations** (shallow; texture, not
+deep-zoom) — plus `radar_sweep` (ex-`optics_physics/`) and `digital_counter`
+(ex-`stylization/`).
 
 | File | What it does | Inputs needed | Variables (defaults) |
 |------|--------------|---------------|----------------------|
 | `burning_ship` | Burning Ship fractal (abs-folded squaring) | none | `zoom` (400.0), `cRe` (0.0), `cIm` (0.0), `gain` (1.0), `gamma` (1.0) |
 | `julia` | Escape-time Julia set | none | `zoom` (400.0), `cRe` (-0.8), `cIm` (0.156), `gain` (1.0), `gamma` (1.0) |
 | `mandelbrot` | Escape-time Mandelbrot set | none | `zoom` (400.0), `cRe` (0.0), `cIm` (0.0), `gain` (1.0), `gamma` (1.0) |
+| `radar_sweep` | Rotating radar/oscilloscope sweep around Centre with an exponential afterglow trailing behind the line, plus faint range rings | none (uses Centre) | `sweep` (animated), `decay` (3.0), `ringFreq` (0.02), `glowR` (0.1), `glowG` (1.0), `glowB` (0.3) |
+| `digital_counter` | Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node | none (generator; composite over your plate) | `digit` (0.0), `digScale` (150), `thick` (0.1), `hw` (0.42), `hh` (0.42), `lit` (1.0) |
 
-### `stmap_generators/`
-Each OUTPUTS a map for a **downstream node** (STMap, or a variable-blur/Defocus for `coc_from_depth`/`thin_lens_coc`) — see each `.md` Notes.
+### `_UPLOADED/stmap_generators/`
+Each OUTPUTS a map for a **downstream node** (STMap, or a variable-blur/Defocus for `coc_from_depth`/`thin_lens_coc`) — see each `.md` Notes. The folder also gained `uv_transform` and `anamorphic_unsqueeze` (rows in the `uv_distortion` section above).
 
 | File | What it does | Inputs needed | Variables (defaults) |
 |------|--------------|---------------|----------------------|
@@ -318,7 +367,7 @@ Each OUTPUTS a map for a **downstream node** (STMap, or a variable-blur/Defocus 
 | `lens_distort_map` | Radial barrel/pincushion ST map (`k1`,`k2`) with anamorphic `squeeze` around Centre. | none (generator → STMap) | `k1` (0.1), `k2` (0.0), `squeeze` (1.0) |
 | `polar_to_cartesian` | Polar/rectangular ST map around Centre | none (generator → STMap) | `twist` (0.0), `zoom` (1.0) |
 
-### `control_surfaces/`
+### `_UPLOADED/experimental/` (was `control_surfaces/`)
 Front 2 / Matte 2 as a painted control surface; plus the two-outputs-at-once trick.
 
 | File | What it does | Inputs needed | Variables (defaults) |
@@ -328,8 +377,9 @@ Front 2 / Matte 2 as a painted control surface; plus the two-outputs-at-once tri
 | `dual_output_depth` | ONE node, TWO products | Front 1 (beauty) + Matte 1 (depth) | `near` (0.0), `far` (1.0), `strength` (1.0), `tintR` (0.6), `tintG` (0.8), `tintB` (1.4) |
 | `painted_grade` | Grades Front 1 using a PAINTED Front 2 control map | Front 1 (image) + Front 2 (control map); Matte 1 optional (passes through) | `expRange` (2.0), `hueRange` (1.0), `satRange` (1.0) |
 
-### `stylization/`
-Per-pixel looks on Front 1 (no neighbour gather).
+### `_UPLOADED/stylize/` (was `stylization/`)
+Per-pixel looks on Front 1 (no neighbour gather). `digital_counter` moved to
+`just_for_fun/` (row above); **`palette_quantize` is in `_SKIP_FOR_NOW/stylization/`**.
 
 | File | What it does | Inputs needed | Variables (defaults) |
 |------|--------------|---------------|----------------------|
@@ -338,18 +388,18 @@ Per-pixel looks on Front 1 (no neighbour gather).
 | `crt` | CRT/VHS look | Front 1 (+ Matte 1 to pass alpha) | `scanDepth` (0.3), `maskDepth` (0.3), `vignette` (0.4), `scanFreq` (1.5), `scale` (3.0), `roll` (animated) |
 | `halftone` | Newspaper halftone | Front 1 | `cell` (12), `angle` (0.4), + colours |
 | `palette_quantize` | Snaps Front 1 to `levels` tonal steps and tints the result between two palette anchor colours (default 4-tone | Front 1 | `levels` (4.0), + colours |
-| `digital_counter` | Burns one SDF 7-segment digit (value `digit` 0..9) into the frame at Centre — no text node | none (generator; composite over your plate) | `digit` (0.0), `digScale` (150), `thick` (0.1), `hw` (0.42), `hh` (0.42), `lit` (1.0) |
 
-### `optics_physics/`
-Analytic physics/optics generators around Centre; animate the keyframed var noted in each `.md`.
+### `optics_physics/` (folder dissolved)
+Analytic physics/optics generators; animate the keyframed var noted in each `.md`.
+`moire` is now in `_UPLOADED/pattern_generator/`, `radar_sweep` in `_UPLOADED/just_for_fun/`
+(row above), and `thin_film` in `_SKIP_FOR_NOW/optics_physics/`.
 
 | File | What it does | Inputs needed | Variables (defaults) |
 |------|--------------|---------------|----------------------|
 | `moire` | Beat pattern of two near-identical line gratings (`freqA` vs `freqB`) — an intentional moiré. | none | `freqA` (0.08), `freqB` (0.085), + colours |
-| `radar_sweep` | Rotating radar/oscilloscope sweep around Centre with an exponential afterglow trailing behind the line, plus faint range rings | none (uses Centre) | `sweep` (animated), `decay` (3.0), `ringFreq` (0.02), `glowR` (0.1), `glowG` (1.0), `glowB` (0.3) |
 | `thin_film` | Thin-film interference iridescence | none (uses Centre) | `thickness` (1.0), `scale` (0.004), `shift` (animated) |
 
-### `diagnostics/`
+### `_UPLOADED/diagnostics/`
 In-comp inspection tools on Front 1.
 
 | File | What it does | Inputs needed | Variables (defaults) |
@@ -375,8 +425,9 @@ setup's `.md` has an **Expects:** line; the buckets:
 - **raw / data (no colour management)** — values that aren't colour: P-world, normal, and
   depth passes (`3d_position_tools`, `depth_tools`) and Cryptomatte (`crypto_pick_*`). A
   colour transform corrupts them.
-- **ST/UV map output** — generators in `uv_distortion/` + `stmap`: input is irrelevant but
-  the 0..1 output is data — tag it Raw/Data so no curve is applied.
+- **ST/UV map output** — the ST/UV-map generators (`stmap_generators/`, the ex-`uv_distortion`
+  setups) + `stmap`: input is irrelevant but the 0..1 output is data — tag it Raw/Data so no
+  curve is applied.
 - **any** — alpha math, pattern generators, cleanup ops: space-agnostic.
 - **conversions** — `srgb_to_linear` / `linear_to_srgb` define their own required input.
 

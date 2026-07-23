@@ -11,6 +11,12 @@ Sync this project's generated files and hand-maintained docs after a change to
 `CATEGORY`, `DOCS`, `EXPECTS`, `NOTES` tables) and regenerate. The `.md` docs and node XML
 are outputs.
 
+**Layout note (2026-07-22):** the `setups/` folder tree is HAND-MANAGED by the user
+(`_UPLOADED/` = verified in Flame 2027.1 + on the Logik Portal; `_SKIP_FOR_NOW/` = held back).
+The generator regenerates each setup **in place** at its current on-disk location — do not
+move files back to flat `setups/<category>/` folders. A brand-new setup lands in the
+`setups/<category>/` fallback; the USER sorts it into the layout.
+
 ## Steps
 
 1. **Snapshot for drift detection.** Before regenerating, copy the current
@@ -44,11 +50,11 @@ are outputs.
    the matching folder table. Variable names and defaults must match the generator.
 
 7. **Update the Live-Flame status** in BOTH `CLAUDE.md` (the "## Live-Flame status" section)
-   and the "Live-Flame status" note in `README.md`. Reflect what the user has
-   confirmed this session: move confirmed-loading setups into "Verified loading"; record any
-   load/compile failure and its fix under "Fixed, awaiting re-confirm"; keep the
-   "Not yet compile-checked" list accurate. Don't claim a setup is verified unless the user
-   actually confirmed it loads.
+   and the "Live-Flame status" note in `README.md`. The rolling eval is CLOSED (2026-07-22
+   Logik Portal upload — everything in `_UPLOADED/` is verified in Flame 2027.1); only touch
+   these when a setup's GLSL changes (its verified status is then stale until the user
+   re-checks it in Flame) or when the user moves/promotes/verifies setups. Don't claim a setup
+   is verified unless the user actually confirmed it.
 
 8. **Verify table completeness for new setups.** Every setup in `SETUPS` should have matching
    `CATEGORY`, `DOCS`, and `EXPECTS` entries (the generator warns on missing DOCS/EXPECTS).

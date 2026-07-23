@@ -16,6 +16,29 @@ import os
 OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "setups")
 W, H, SX, SY = 1920, 1080, 16, 9
 
+# The setups/ layout is HAND-MANAGED since the Logik Portal upload (2026-07-22):
+# _UPLOADED/<folder>/ = verified in Flame 2027.1 + published; _SKIP_FOR_NOW/ = held back.
+# Folder names there no longer match CATEGORY, so regeneration writes each setup IN
+# PLACE — wherever its .pixel_expression_node currently lives on disk. Only a brand-new
+# setup (no existing file) falls back to setups/<category>/; sort it into the layout by
+# hand afterwards.
+def _index_layout():
+    dirs = {}
+    for root, _subdirs, files in os.walk(OUT_DIR):
+        for f in files:
+            if f.endswith(".pixel_expression_node"):
+                stem = f[: -len(".pixel_expression_node")]
+                if stem in dirs:
+                    print(f"WARNING: duplicate on disk: {stem} in {dirs[stem]} AND {root}")
+                dirs[stem] = root
+    return dirs
+
+_LAYOUT = _index_layout()
+
+
+def _out_dir(fname, category):
+    return _LAYOUT.get(fname) or (os.path.join(OUT_DIR, category) if category else OUT_DIR)
+
 
 def xml_escape(s):
     """Escape XML-significant chars. GLSL comparison operators (< > <= >=) MUST be
@@ -54,8 +77,11 @@ def channel(path, value):
 
 
 def build(name, red, green, blue, matte,
-          variables=None, formulas=None, centre=(0, 0), category=""):
-    """variables: list of (name, value), up to 8. formulas: list of (name, expr, type), up to 4."""
+          variables=None, formulas=None, centre=(0, 0), category="", filename=None):
+    """variables: list of (name, value), up to 8. formulas: list of (name, expr, type), up to 4.
+
+    filename: output basename when it differs from `name` (a user-side file rename we
+    honour without churning the verified XML — internal channel paths keep `name`)."""
     variables = variables or []
     formulas = formulas or []
     # Hard limits (UI slots). Fail loudly — silently truncating would emit a setup whose
@@ -121,9 +147,10 @@ def build(name, red, green, blue, matte,
     # State order (new format): expressions, declarations, variables, centre, formulas.
     xml = f'{base}<State>{exprs}{decls_xml}{vars_xml}{centre_xml}{forms_xml}</State></Setup>'
 
-    out_dir = os.path.join(OUT_DIR, category) if category else OUT_DIR
+    fname = filename or name
+    out_dir = _out_dir(fname, category)
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, f"{name}.pixel_expression_node")
+    path = os.path.join(out_dir, f"{fname}.pixel_expression_node")
     with open(path, "w") as f:
         f.write(xml)
     print("wrote", os.path.relpath(path, OUT_DIR))
@@ -1065,7 +1092,9 @@ SETUPS = [
          formulas=[HSV_P, HSV_Q]),
 
     # Colour replace — shift hues near `srcHue` toward `dstHue` (rest untouched). Front 1.
-    dict(name="color_replace",
+    # File renamed to hsv_color_replace for the Logik Portal upload (2026-07-22); internal
+    # name/channel paths keep color_replace so the verified XML stays byte-identical.
+    dict(name="color_replace", filename="hsv_color_replace",
          red=f"mix(r1, {_HROT_R}, {_hue_band(_HUE, 'srcHue', 'tol', 'soft')})",
          green=f"mix(g1, {_HROT_G}, {_hue_band(_HUE, 'srcHue', 'tol', 'soft')})",
          blue=f"mix(b1, {_HROT_B}, {_hue_band(_HUE, 'srcHue', 'tol', 'soft')})",
@@ -5555,9 +5584,10 @@ def _fmt_vars(variables):
 
 def write_doc(s):
     name = s["name"]
+    fname = s.get("filename", name)
     what, use, inputs = DOCS.get(name, ("", "", "—"))
     md = (
-        f"# {name}\n\n"
+        f"# {fname}\n\n"
         f"**What it does:** {what}\n\n"
         f"**Use case:** {use}\n\n"
         f"**Inputs:** {inputs}\n\n"
@@ -5568,7 +5598,7 @@ def write_doc(s):
         md += "\n## Node dependencies\n" + DEPENDS[name].strip() + "\n"
     if name in NOTES:
         md += "\n" + NOTES[name].strip() + "\n"
-    path = os.path.join(OUT_DIR, s["category"], f"{name}.md")
+    path = os.path.join(_out_dir(fname, s["category"]), f"{fname}.md")
     with open(path, "w") as f:
         f.write(md)
 

@@ -1,5 +1,32 @@
 # Live-Flame evaluation — progress tracker
 
+## ✅ EVAL CLOSED — superseded by the Logik Portal upload (2026-07-22)
+The user published the library to the **Logik Portal** and reorganized `setups/` by publication
+status. This supersedes the per-setup checklist below (kept as history):
+- **`setups/_UPLOADED/` — 111 setups, ALL verified to work in Flame 2027.1** and published to
+  the Logik Portal. This closes every open item that landed there — including **13 of the 15
+  setups revoked by the 2026-07-21 bug-fix pass** (sdf_rounded_box, sdf_polygon, starfield,
+  halftone, crosshatch, zone_system_posterize, st_uv_map_inspector, kaleidoscope_map,
+  mandelbrot, burning_ship, painted_grade, dual_output_depth, alpha_crunch) and the fixed
+  hue-matrix family (hue_rotate, hsl_targeted, hsv_color_replace) and normal_relight.
+- **`setups/_SKIP_FOR_NOW/` — 45 setups deemed not worth uploading** (largely basics Flame
+  covers natively: the matte_combine set-ops, basic color_grade ops + log-curve conversions,
+  simple patterns, scalar noise, lens_distort/undistort, etc.). Not broken — just held back.
+  Their in-Flame status is whatever the checklist below last said; the only revoked setups
+  never re-verified are here: **`radial_ramp`** and **`palette_quantize`**.
+- **Layout/renames done during the upload:** categories were renamed/merged inside `_UPLOADED/`
+  (`alpha_matte_tools`→`matte_tools`, `sdf_shapes`→`shapes`, `stylization`→`stylize`,
+  `pattern_generators`→`pattern_generator`, `control_surfaces`→`experimental`,
+  `fractals`+`radar_sweep`+`digital_counter`→`just_for_fun`; `moire`+`sdf_lattice`→
+  `pattern_generator`; `uv_transform`+`anamorphic_unsqueeze`→`stmap_generators`), and
+  **`color_replace` was renamed `hsv_color_replace`** (file/md only — internal XML unchanged;
+  the generator's `filename` override reproduces this). `tools/generate_setups.py` now writes
+  every setup **in place** at its current on-disk location, so regeneration remains safe.
+
+Everything below is the historical per-setup eval record (pre-upload).
+
+---
+
 Working through an **in-Flame load/visual test of every setup**, one at a time. The user loads
 each in Flame and approves or rejects it.
 
@@ -23,7 +50,7 @@ regenerate" freeze). **Now: track status here as a checklist and leave the files
 - **Scope:** all 156 setups (new format — none carry over from the old eval).
 - **Order:** highest-risk first (heaviest GLSL, below), then the rest by category.
 
-## Status: 96 / 156 confirmed (new format)  ·  ✅ PHASE 1 & PHASE 2 COMPLETE · ▶ Phase 3/4 (basics) underway · ⚠ 15 passes revoked by the 2026-07-21 bug-fix pass (below)
+## Status (HISTORICAL — see the 2026-07-22 closure at the top): 96 / 156 confirmed (new format)  ·  ✅ PHASE 1 & PHASE 2 COMPLETE · ▶ Phase 3/4 (basics) underway · ⚠ 15 passes revoked by the 2026-07-21 bug-fix pass (below)
 
 ### ⚠️ Bug-fix pass (2026-07-21) — 17 setups' GLSL changed; 15 previous passes REVOKED
 A full semantic review (Fable) found and fixed real rendering bugs; the offline checkers stayed

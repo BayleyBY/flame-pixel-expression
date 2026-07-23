@@ -7,7 +7,35 @@ A library of **Autodesk Flame "Pixel Expression" node setups** (`.pixel_expressi
 files) that translate the best Foundry Nuke expression-node examples into Flame's GLSL.
 The Pixel Expression node (Flame 2027.1+) applies per-pixel GLSL to a clip's channels.
 
-This repo is **local-only by design** — git has no remote. Never add one, push, or publish it.
+This repo is **public on GitHub** (`BayleyBY/flame-pixel-expression`) as of 2026-07-22 — the
+old local-only rule was explicitly lifted by the user once Flame 2027.1 (the release that
+ships the Pixel Expression node) came out and the verified setups went up on the **Logik
+Portal** (see "Library layout" below). Committing and pushing to `origin` is normal now.
+
+## ⭐ Library layout since the Logik Portal upload (2026-07-22)
+The user uploaded the library to the Logik Portal and reorganized `setups/` by publication
+status — **this layout is hand-managed by the user; do not "fix" it back to flat categories**:
+- **`setups/_UPLOADED/`** — **111 setups, ALL verified to work in Flame 2027.1** and published
+  to the Logik Portal. Sixteen folders; several categories were renamed/merged from the old
+  flat layout: `alpha_matte_tools`→`matte_tools`, `sdf_shapes`→`shapes`,
+  `stylization`→`stylize`, `pattern_generators`→`pattern_generator`,
+  `control_surfaces`→`experimental`, and a new `just_for_fun` (the 3 fractals + `radar_sweep`
+  + `digital_counter`). Cross-moves: `moire` + `sdf_lattice` → `pattern_generator`;
+  `uv_transform` + `anamorphic_unsqueeze` → `stmap_generators`.
+- **`setups/_SKIP_FOR_NOW/`** — **45 setups deemed not worth uploading** (largely basics Flame
+  covers natively: `matte_combine/` set-ops, basic `color_grade/` ops and log-curve
+  conversions, simple `pattern_generators/`, scalar `noise/`, `uv_distortion/`
+  lens_distort/undistort, plus a few loose files at its root). Not broken — just held back.
+  The only setups whose 2026-07-21 bug-fixes were never re-verified in Flame are here:
+  `radial_ramp` and `palette_quantize`.
+- **One file rename:** `color_replace` → **`hsv_color_replace`** (file + md title only; the
+  XML inside still says `scene/color_replace/` — proven to load fine. The generator's
+  `filename` override on that setup reproduces this exactly).
+- **The generator now writes in place:** `tools/generate_setups.py` indexes the current
+  on-disk location of every `.pixel_expression_node` and regenerates each setup (and its
+  `.md`) wherever it currently lives. Only a brand-new setup falls back to
+  `setups/<category>/` — sort it into `_UPLOADED`/`_SKIP_FOR_NOW` by hand (ask the user
+  where it belongs). Regeneration is verified byte-identical against the uploaded files.
 
 ## Commands
 Generator + validator are pure-stdlib Python 3 — no deps, no venv, no install step.
@@ -36,15 +64,12 @@ A Pixel Expression node update **changed the save-file XML structure**, so every
 silently failed to load. The format was re-reverse-engineered from fresh Flame saves (kept in
 `PR245/`), the generator + both checker tools were updated, and **all 156 setups were regenerated
 to the new format**. See "File format facts" and "Live-Flame status" below for the delta.
-- **Regeneration is safe again.** The old `approved/`/`rejected/` subfolders were flattened (the
-  16 old-format approvals no longer load in the updated node), so the layout is flat again and
-  `tools/generate_setups.py` writes the single source of truth with no duplication risk.
-- **The Live-Flame eval reset to 0/156** against the updated node on 2026-07-07 and is now well
-  underway (~96/156, Phases 1 & 2 complete; a 2026-07-21 semantic bug-fix pass changed 17
-  setups' GLSL and revoked 15 previous passes — see the tracker). Because only the *file
-  wrapper* changed in PR245 (GLSL untouched), re-verification has been fast — whole folders
-  pass in a batch. Tracker (source of truth for the live count):
-  `documentation/live_flame_eval_progress.md`.
+- **Regeneration is safe.** The layout is no longer flat (see "Library layout" above), but the
+  generator writes each setup **in place** at its current on-disk location, so
+  `tools/generate_setups.py` remains the single source of truth with no duplication risk.
+- **The Live-Flame eval (reset to 0/156 by PR245) is now CLOSED** — superseded by the
+  2026-07-22 Logik Portal upload: everything in `setups/_UPLOADED/` (111) is verified in Flame
+  2027.1. History lives in `documentation/live_flame_eval_progress.md`.
 
 ## Golden rule: never hand-edit the setup files
 `tools/generate_setups.py` is the **single source of truth**. All 156 `.pixel_expression_node`
@@ -52,7 +77,9 @@ files and their companion `.md` docs are generated from it.
 - Add/change a setup → edit the `SETUPS` list, then add its `CATEGORY`, `DOCS`, and
   `EXPECTS` entries (the script warns if `DOCS`/`EXPECTS` are missing). Optionally add a
   `NOTES` entry — long-form Markdown appended to the setup's `.md` under a `## Notes`
-  heading (workflow, recipes, gotchas); all 156 setups currently have one.
+  heading (workflow, recipes, gotchas); all 156 setups currently have one. A **brand-new**
+  setup is written to the `setups/<category>/` fallback — move it into `_UPLOADED/` or
+  `_SKIP_FOR_NOW/` by hand (the user decides which; existing setups regenerate in place).
 - Regenerate: `python3 tools/generate_setups.py`
 - Validate: `python3 tools/validate_setups.py` (must be **0 errors**; reserved-name
   collisions — any var/formula shadowing a built-in/input — plus undefined identifiers,
@@ -70,8 +97,9 @@ files and their companion `.md` docs are generated from it.
 - `.claude/commands/sync-docs.md` — the `/sync-docs` project command (regenerate, validate,
   drift-check, and sync counts + Live-Flame status across the hand-maintained docs).
 - `README.md` — human index (per-folder tables, colour-management, caveats).
-- `setups/` — the 156 generated `.pixel_expression_node` files + companion `.md` docs, in 19
-  category subfolders (the loadable library).
+- `setups/` — the 156 generated `.pixel_expression_node` files + companion `.md` docs, split
+  by publication status: `_UPLOADED/` (111, verified in Flame 2027.1, on the Logik Portal, 16
+  category subfolders) and `_SKIP_FOR_NOW/` (45 held back). See "Library layout" above.
 - `documentation/pixelexpression1.pixel_expression_node` — a real Flame-saved file kept as a
   worked example of the **old pre-PR245** serialization (the original format doc was
   reverse-engineered from it; it no longer loads in the updated node — the current-format
@@ -178,24 +206,32 @@ seven-segment builders `_seven_seg_expr()`/`_seg_bar()`/`_seg_eq()` + `_SEG_ON`/
 section. `stylization/` setups are collected in a `_STYLIZATION` list appended to `SETUPS`.
 
 ## Folders (156 setups, all under `setups/`)
-`alpha_matte_tools` `pattern_generators` `animated_generators` `color_grade`
-`3d_position_tools` `depth_tools` `aov_tools` `uv_distortion` `noise` `sdf_shapes`
-`hsv_color` `matte_combine` `utility`
+**`_UPLOADED/` (111 — verified in Flame 2027.1, published to the Logik Portal):**
+`3d_position_tools` `animated_generators` `aov_tools` `color_grade` `depth_tools`
+`diagnostics` `experimental` `hsv_color` `just_for_fun` `matte_tools` `noise`
+`pattern_generator` `shapes` `stmap_generators` `stylize` `utility`
 
-**Unconventional / experimental categories (added later, see "Live-Flame status"):**
-`fractals` `stmap_generators` `control_surfaces` `stylization` `optics_physics` `diagnostics`
-- `fractals` — escape-time Mandelbrot/Julia/Burning-Ship. **Architecture-limited to 8
-  iterations** (the node has no reassignable state; the only way to iterate is the 4-formula
+**`_SKIP_FOR_NOW/` (45 — held back from the Portal, not broken):**
+`color_grade` `depth_tools` `hsv_color` `matte_combine` `noise` `optics_physics`
+`pattern_generators` `stylization` `uv_distortion` + 4 loose files at its root
+(`box_matte`, `id_isolate`, `normal_renormalize`, `position_range_remap`).
+
+Notes on the trickier `_UPLOADED/` folders:
+- `just_for_fun` — the escape-time Mandelbrot/Julia/Burning-Ship (**architecture-limited to 8
+  iterations**: the node has no reassignable state; the only way to iterate is the 4-formula
   chain, and inlining a complex square expands the string ~8× per step, so K=2/formula is the
-  ceiling). Interiors read solid, edges band — a texture tool, not a deep-zoom renderer.
+  ceiling — interiors read solid, edges band; a texture tool, not a deep-zoom renderer), plus
+  `radar_sweep` and `digital_counter`.
 - `stmap_generators` — these OUTPUT a map (UV coords or a scalar) to be consumed by a
   **downstream node**; there is no neighbour sampling, so the gather happens elsewhere. Each
   `.md` "Notes" states the required downstream node (STMap for the UV maps; a variable-blur /
-  Defocus for `coc_from_depth`/`thin_lens_coc`).
-- `control_surfaces` — Front 2 / Matte 2 used as a painted control surface (spatially-varying
-  parameters) and the node's two-outputs-at-once trick (`dual_output_depth`).
-- `stylization` `optics_physics` `diagnostics` — per-pixel looks, analytic physics generators,
-  and in-comp inspection tools (colour-blindness sim, exposure zebra, gamut clip).
+  Defocus for `coc_from_depth`/`thin_lens_coc`). Now also holds `uv_transform` and
+  `anamorphic_unsqueeze` (formerly `uv_distortion/`).
+- `experimental` (was `control_surfaces`) — Front 2 / Matte 2 used as a painted control
+  surface (spatially-varying parameters) and the node's two-outputs-at-once trick
+  (`dual_output_depth`).
+- `stylize` `diagnostics` — per-pixel looks, and in-comp inspection tools (colour-blindness
+  sim, exposure zebra, gamut clip).
 
 Note: procedural noise (`noise/`) and HSV/voronoi expressions are large and built
 programmatically in `tools/generate_setups.py` (the node has no user-defined GLSL functions,
@@ -203,30 +239,21 @@ so everything is inlined). All are verified in Flame, but they're the most compl
 the library — so if you edit one, they're the most likely to need a fresh live-compile check.
 
 ## Live-Flame status
-- **The PR245 format change reset the in-Flame verification.** All prior in-Flame approvals (the
-  original 83 + the 16 Phase-1 approvals) were against the **old** file format/node and **do not
-  transfer** — those old-format files no longer load. All 156 setups have been **regenerated to the
-  new format** and now need a fresh in-Flame load pass. Good news: only the *file wrapper* changed
-  (GLSL/expressions untouched), so most should re-verify quickly.
-- **Confirmed in the updated node so far:** see `documentation/live_flame_eval_progress.md` for the
-  live count (**Phases 1 & 2 are complete** — all 16 highest-risk plus the unconventional/experimental
-  folders — and the lower-risk basics are being batch-confirmed folder-by-folder; ~96/156 confirmed:
-  111 as of the last session minus 15 passes revoked by the 2026-07-21 bug-fix pass. Resume at
-  `aov_tools/`, then re-verify the revoked list). The new format is proven correct, including animated
-  channels (`thin_film`/`metaball_ring`). Everything not yet ticked is **new-format, in-Flame
-  confirmation pending** — the tracker doc is the source of truth for the exact count.
+- **✅ The eval is CLOSED — superseded by the Logik Portal upload (2026-07-22).** Everything in
+  `setups/_UPLOADED/` (111 setups) **is verified to work in Flame 2027.1** and published. That
+  includes 13 of the 15 setups revoked by the 2026-07-21 bug-fix pass, the fixed hue-matrix
+  family (`hue_rotate`/`hsl_targeted`/`hsv_color_replace`), `normal_relight`, and the animated
+  channels (`metaball_ring`; `thin_film` is in `_SKIP_FOR_NOW/`). The per-setup tracker
+  (`documentation/live_flame_eval_progress.md`) is now historical.
+- **The 45 in `setups/_SKIP_FOR_NOW/` were deemed not worth uploading** (mostly basics Flame
+  covers natively) — not broken, just held back. Their verification state is frozen at what the
+  tracker last recorded; the only bug-fixed setups never re-verified in Flame are `radial_ramp`
+  and `palette_quantize` (both skipped — only matters if they're ever promoted to the Portal).
 - **All 156 pass the offline checkers** (both recalibrated for the new format):
   `tools/validate_setups.py` → 0 errors/0 warnings, and `tools/glsl_compile_check.py`
   (`glslangValidator`, `#version 410 core`) → 156 compile. A clean compile is strong evidence a
   setup will load, but can't confirm Flame's exact dialect/expression-length acceptance, OutMatte
   wiring, or visual correctness — do a real load before fully trusting.
-- **Highest-risk to re-check first** (heaviest GLSL — most likely to expose a dialect/length limit):
-  `digital_counter` (the 7-segment digit — longest single expression), the three `fractals` (deeply-nested vec3 formula
-  chains), `heat_haze_map` (inlines the fbm builder), `thin_film`/`starfield` (swizzled vec
-  formulas), `color_blindness` (4 matrix formulas), `false_color_exposure`/`st_uv_map_inspector`/
-  `uv_test_chart` (nested vec3 `mix` cascades; read the injected `uv`), and the Voronoi trio
-  `voronoi_edges`/`voronoi_manhattan`/`voronoi_chebyshev` (9-term distance chains), `hex_grid`
-  (the `gv` nearest-centre ternary), `smin_metaballs` (nested smooth-min).
 - **History/lessons (still apply):**
   - `hsl_targeted` first failed to load because it declared a variable `width` (collides with the
     injected built-in). The validator flags ANY var/formula shadowing a built-in/input — re-run it
@@ -241,14 +268,14 @@ the library — so if you edit one, they're the most likely to need a fresh live
   usually means an unescaped `<`/`>`, a reserved name (a built-in `uv`/`x`/`y`/`width`/`height`/
   `centre`/`E`/`PI` or input `r1`… used as a variable/formula — the validator catches this), or a
   format drift from the generator.
-- **Outstanding next step:** finish the in-Flame pass (tracker:
-  `documentation/live_flame_eval_progress.md`): (1) the remaining basics folders, resuming at
-  `aov_tools/`; (2) **re-verify the 15 setups revoked by the 2026-07-21 bug-fix pass** — their
-  GLSL changed, and since every one of those bugs had *passed* a load-check, the re-verify must
-  be VISUAL (the tracker's bug-fix section says exactly what to look for per setup). Counts
-  here/README can be reconciled with `/sync-docs` (the freeze is lifted and the layout is flat).
-  For *more* setups, pull the next idea from `documentation/setup_expansion_backlog.md` — Tiers 1–4
-  are done; only the Deferred / flagged items (and the `digital_counter` alphanumeric idea) remain.
+- **Outstanding next steps (nothing blocking):** the eval is done. Possible future work:
+  (1) promote `_SKIP_FOR_NOW/` setups to the Portal if the user changes their mind — if
+  `radial_ramp` or `palette_quantize` are promoted, re-verify them VISUALLY first (their
+  2026-07-21 bug-fixes were never eyeballed in Flame; the tracker's bug-fix section says what
+  to look for); (2) new setups from `documentation/setup_expansion_backlog.md` — Tiers 1–4 are
+  done; only the Deferred / flagged items (and the `digital_counter` alphanumeric idea) remain.
+  A new setup lands in the `setups/<category>/` fallback — the user sorts it into the layout
+  and decides whether it gets uploaded. `/sync-docs` still reconciles counts/status.
 - **Known accepted limitations (2026-07-21 review — deliberate wontfixes, don't re-litigate):**
   `voronoi_manhattan`'s 3×3 neighbourhood is insufficient for the Manhattan metric on ~0.02% of
   pixels (a 5×5 gather would ~triple the expression length — accepted); `split_tone`'s tint isn't
