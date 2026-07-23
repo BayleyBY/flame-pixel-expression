@@ -382,8 +382,8 @@ Front 2 / Matte 2 as a painted control surface; plus the two-outputs-at-once tri
 
 | File | What it does | Inputs needed | Variables (defaults) |
 |------|--------------|---------------|----------------------|
-| `channel_pack` | Packs three single-channel signals into one RGB | Matte 1 + Matte 2 + Front 1 | — |
-| `channel_unpack` | Passes a packed RGB (from channel_pack) through unchanged and routes one channel to the Matte | Front 1 (the packed RGB) | `pick` (0) |
+| `channel_pack` | Packs FOUR single-channel signals (RGB on Result + ch4 on OutMatte) | Matte 1 + Matte 2 + Front 1 + Front 2 | — |
+| `channel_unpack` | Passes the packed RGB through and routes one of the four to the Matte | Front 1 (packed RGB) + Matte 1 (ferried ch4) | `pick` (0; 0–3 = r/g/b/m1) |
 | `dual_output_depth` | ONE node, TWO products | Front 1 (beauty) + Matte 1 (depth) | `near` (0.0), `far` (1.0), `strength` (1.0), `tintR` (0.6), `tintG` (0.8), `tintB` (1.4) |
 | `painted_grade` | Grades Front 1 using a PAINTED Front 2 control map | Front 1 (image) + Front 2 (control map); Matte 1 optional (passes through) | `expRange` (2.0), `hueRange` (1.0), `satRange` (1.0) |
 

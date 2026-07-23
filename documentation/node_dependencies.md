@@ -60,8 +60,8 @@ about the Pixel Expression node make these dependencies easy to get wrong:
 | `crypto_pick_2rank` `crypto_pick_4rank` | aov_tools | **Cryptomatte ranks** (value + coverage) | — |
 | `difference_matte` | alpha_matte_tools | **clean plate** on Front 2 | (matte → comp) |
 | `painted_grade` | control_surfaces | **painted control map** on Front 2 | — |
-| `channel_pack` | control_surfaces | three signals | **`channel_unpack`** |
-| `channel_unpack` | control_surfaces | a packed RGB (from `channel_pack`) | — |
+| `channel_pack` | control_surfaces | four signals (2×Matte + 2×Front luma) | **`channel_unpack`** (Result + OutMatte wires) |
+| `channel_unpack` | control_surfaces | packed RGB (Front 1) + ferried ch4 (Matte 1) | — |
 | `dual_output_depth` | control_surfaces | beauty + depth on Matte 1 | (matte → comp) |
 | `hsv_to_rgb` | hsv_color | **HSV-encoded** input (usually from `rgb_to_hsv`) | — |
 | `rgb_to_hsv` | hsv_color | — | a node that reads HSV / `hsv_to_rgb` |
@@ -236,10 +236,13 @@ Cryptomatte) wired to a specific input. Plug in the wrong pass and they fail sil
   fill, a ramp, or even another Pixel Expression generator. Flat 0.5 grey = neutral.
 
 ### Paired Pixel Expression nodes (rely on a sibling of this library)
-- **`channel_pack` → `channel_unpack`** — `channel_pack` ferries three single-channel signals
-  down one RGB connection (red = Matte 1, green = Matte 2, blue = Front 1 luma);
-  `channel_unpack` at the far end recovers them and routes one to OutMatte (`pick` = 0/1/2).
-  Useless apart — they're a **matched pair** across a comp.
+- **`channel_pack` → `channel_unpack`** — `channel_pack` ferries **four** single-channel
+  signals on its Result + OutMatte wire pair (red = Matte 1, green = Matte 2, blue = Front 1
+  luma; OutMatte = Front 2 luma — the Result socket is RGB-only, so channel 4 rides the
+  OutMatte). Run both wires to `channel_unpack` (Result → Front 1, OutMatte → Matte 1 — that
+  second wire doubles as the OutMatte-enabler its docs used to require anyway); `pick` =
+  0/1/2/3 recovers any of the four. Leave the pack's Front 2 empty for the old 3-wide
+  behaviour. Useless apart — they're a **matched pair** across a comp.
 - **`rgb_to_hsv` ↔ `hsv_to_rgb`** — `hsv_to_rgb` expects an **HSV-encoded** image, which in
   practice comes from `rgb_to_hsv` (or another HSV source) upstream. Use them to bracket a
   hand-built HSV operation when one of the dedicated `hsv_color/` setups doesn't fit.

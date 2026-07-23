@@ -47,6 +47,12 @@ status — **this layout is hand-managed by the user; do not "fix" it back to fl
   built it in Flame by modifying `despill_green` and verified it, then it was integrated into
   the generator and regenerated in place in `Uploaded to Logik-Portal/color_grade/` (the
   regenerated file differs from the user's Flame save only by whitespace in one expression).
+- **`channel_pack`/`channel_unpack` widened to 4 channels (2026-07-23) — ⚠ NOT yet
+  re-verified in Flame.** The pack's Matte expression now carries Front 2's luma out the
+  OutMatte (was a constant 1.0), and unpack's `pick` gained value 3 = its Matte 1 input; the
+  ferry is now the Result + OutMatte wire *pair* (Result is RGB-only, so channel 4 rides the
+  OutMatte). Both `.md`s have Quick tests for the re-check; the Portal copies are the old
+  3-wide versions until the user re-uploads.
 - **`hsv_grade` (added 2026-07-23, VERIFIED in Flame the same day)** — grades HSV-ENCODED
   data between `rgb_to_hsv` and `hsv_to_rgb` (wrapping `hueShift`, `satGain`/`satGamma`,
   `valGain`/`valGamma`; neutral defaults). Built to demonstrate mid-sandwich HSV work; has a
@@ -256,7 +262,7 @@ Notes on the trickier `Uploaded to Logik-Portal/` folders:
   `anamorphic_unsqueeze` (formerly `uv_distortion/`).
 - `experimental` (was `control_surfaces`) — Front 2 / Matte 2 used as a painted control
   surface (spatially-varying parameters) and the node's two-outputs-at-once trick
-  (`dual_output_depth`).
+  (`dual_output_depth`, and since 2026-07-23 the 4-wide `channel_pack` ferry).
 - `stylize` `diagnostics` — per-pixel looks, and in-comp inspection tools (colour-blindness
   sim, exposure zebra, gamut clip).
 

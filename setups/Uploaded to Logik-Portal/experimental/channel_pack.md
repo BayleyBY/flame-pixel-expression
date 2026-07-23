@@ -1,45 +1,58 @@
 # channel_pack
 
-**What it does:** Packs three single-channel signals into one RGB: red = Matte 1, green = Matte 2, blue = Front 1 luma; matte = 1.
+**What it does:** Packs FOUR single-channel signals: red = Matte 1, green = Matte 2, blue = Front 1 luma (Result), plus Front 2 luma on OutMatte.
 
-**Use case:** Ferry three mattes/masks down a single connection through a comp; unpack later with channel_unpack.
+**Use case:** Ferry four mattes/masks through a comp on the Result + OutMatte wire pair; unpack with channel_unpack.
 
-**Inputs:** Matte 1 + Matte 2 + Front 1
+**Inputs:** Matte 1 + Matte 2 + Front 1 + Front 2
 
-**Expects:** any (the three packed signals are data — tag the output Raw/Data)
+**Expects:** any (the four packed signals are data — tag both outputs Raw/Data)
 
 _No variables._
 
 ## Node dependencies
-**Pipeline:** Matte 1 + Matte 2 + Front 1 → **this node** → `channel_unpack`
+**Pipeline:** Matte 1 + Matte 2 + Front 1 + Front 2 → **this node** → `channel_unpack`
 
-Ferries three single-channel signals down **one** RGB connection (red = Matte 1, green = Matte 2, blue = Front 1 luma). Useless without its partner **`channel_unpack`** at the far end to recover them.
+Ferries FOUR single-channel signals on the Result + OutMatte wire pair (red = Matte 1, green = Matte 2, blue = Front 1 luma; OutMatte = Front 2 luma — the Result socket is RGB-only, so channel 4 rides the OutMatte). Useless without its partner **`channel_unpack`** at the far end to recover them.
 
 See `documentation/node_dependencies.md` for the full wiring guide.
 
 ## Notes
 
-A **3-into-1 muxer**: stuff three unrelated single-channel signals into one RGB so they ride a
-single connection through a comp, then split them back out with `channel_unpack` at the far
-end. Saves wiring and keeps related masks travelling together.
+A **4-into-1-node muxer**: stuff four unrelated single-channel signals into one node's outputs
+so they ride a wire *pair* (Result + OutMatte) through a comp, then split them back out with
+`channel_unpack` at the far end. Saves wiring and keeps related masks travelling together.
 
 ### The packing
-- **red** = Matte 1, **green** = Matte 2, **blue** = Front 1 **luma** (Rec.709). Matte = 1.
-- Blue is luma rather than a raw channel so the third slot can carry a brightness/key signal;
-  swap it for `b1` in `generate_setups.py` if you'd rather ferry a literal blue channel.
+- **red** = Matte 1, **green** = Matte 2, **blue** = Front 1 **luma** (Rec.709) — all on the
+  **Result** output. **Channel 4** = Front 2 **luma**, on the **OutMatte** output.
+- The lumas are used rather than raw channels so those slots work whether the Front is a
+  colour plate (carries its brightness/key) or a grayscale mask; swap for `b1`/`b2` in
+  `generate_setups.py` if you'd rather ferry a literal single channel.
 
-### Why blue is a luma, and how to pack three *mattes*
-The node has only **two Matte sockets** (`m1`, `m2`) — there is no third Matte input — so the
-third packed signal **must come from a Front input**. Blue reads **Front 1's luma** so that slot
-works whether Front 1 is a colour plate (carries its brightness/key) or a grayscale mask.
-- **Yes, you can pack three mattes:** feed your third matte into **Front 1**. For a grayscale
-  matte `r1 = g1 = b1`, so its **luma equals the matte value** — `channel_unpack` recovers it
-  exactly. No change needed; the wiring is just `m1`, `m2`, and the third matte on **Front 1**.
-- Only switch blue to a raw channel (`r1`/`b1`) if your third signal lives in a **single channel
-  of a colour** Front 1 (where luma would blend it with the other two channels).
+### The topology (why 4 needs two wires)
+The **Result socket is RGB — three channels** — so the fourth signal has to leave through the
+**OutMatte** output: run BOTH wires to the far end (Result → `channel_unpack` Front 1,
+OutMatte → its Matte 1). That second wire is no extra cost at the destination —
+`channel_unpack`'s own OutMatte needs *something* on Matte 1 anyway, and now that wire
+carries real data. Pack-side OutMatte always renders because Matte 1 is a packed input by
+construction. (Same two-outputs-at-once trick as `dual_output_depth`.)
+
+### How to pack four *mattes*
+The node has only **two Matte sockets** (`m1`, `m2`), so signals 3 and 4 come in on the
+Fronts. For a grayscale matte `r = g = b`, so its **luma equals the matte value** — recovered
+exactly. Wiring: matte A → Matte 1, B → Matte 2, C → Front 1, D → Front 2. Only three to
+ferry? Leave Front 2 unconnected — channels 1–3 are unchanged from the old 3-wide pack.
 
 ### Practical notes
-- The packed channels are **data, not colour** — tag the output **Raw/Data** so colour
+- The packed channels are **data, not colour** — tag **both outputs** Raw/Data so colour
   management doesn't bend the values before you unpack them.
-- Unpack partner: **`channel_unpack`** (route any packed channel to a Matte). Keep both ends in
-  the same space/data tag.
+- Unpack partner: **`channel_unpack`** (`pick` 0–3 routes any packed channel to its OutMatte).
+  Keep both ends in the same space/data tag.
+
+### Quick test
+Wire FOUR different greyscale clips/mattes: A → **Matte 1**, B → **Matte 2**, C → **Front 1**,
+D → **Front 2**. The **Result** reads as a false-colour RGB (A in red, B in green, C's luma in
+blue) and the **OutMatte** shows D's luma. Nothing on Front 2 → OutMatte reads black — that's
+the empty 4th slot, not a bug. Confirm the round trip with `channel_unpack` (Result → its
+Front 1, OutMatte → its Matte 1): `pick` 0/1/2/3 must reproduce A/B/C/D on its OutMatte.

@@ -1340,14 +1340,16 @@ SETUPS = [
     # Channel pack — ferry three single-channel signals down ONE connection:
     # red = Matte 1, green = Matte 2, blue = Front 1 luma. Unpack with channel_unpack.
     dict(name="channel_pack",
-         red="m1", green="m2", blue=_LUMA, matte="1.0"),
+         red="m1", green="m2", blue=_LUMA,
+         matte="dot(vec3(r2, g2, b2), vec3(0.2126, 0.7152, 0.0722))"),
 
-    # Channel unpack — expose a packed RGB (from channel_pack) on Front 1 and route
-    # one channel to the Matte. `pick` 0/1/2 selects r1/g1/b1 for the OutMatte; RGB
-    # passes through unchanged. Selection via step (no arrays).
+    # Channel unpack — expose a packed RGB (from channel_pack) on Front 1 (+ the
+    # ferried 4th channel on Matte 1) and route one channel to the Matte. `pick`
+    # 0/1/2/3 selects r1/g1/b1/m1 for the OutMatte; RGB passes through unchanged.
+    # Selection via step (no arrays).
     dict(name="channel_unpack",
          red="r1", green="g1", blue="b1",
-         matte="mix(mix(r1, g1, step(0.5, pick)), b1, step(1.5, pick))",
+         matte="mix(mix(mix(r1, g1, step(0.5, pick)), b1, step(1.5, pick)), m1, step(2.5, pick))",
          variables=[("pick", 0)]),
 
     # Dual-output depth — ONE node, TWO products: RGB is a depth-tinted grade of the
@@ -2368,14 +2370,14 @@ DOCS = {
                       "Paint a soft control map (in Paint/roto/another Pixel Expression) to drive "
                       "exposure/hue/sat that vary across the frame from one node — no tracked mattes.",
                       "Front 1 (image) + Front 2 (control map); Matte 1 optional (passes through)"),
-    "channel_pack": ("Packs three single-channel signals into one RGB: red = Matte 1, green = Matte 2, "
-                     "blue = Front 1 luma; matte = 1.",
-                     "Ferry three mattes/masks down a single connection through a comp; unpack later with channel_unpack.",
-                     "Matte 1 + Matte 2 + Front 1"),
+    "channel_pack": ("Packs FOUR single-channel signals: red = Matte 1, green = Matte 2, blue = Front 1 "
+                     "luma (Result), plus Front 2 luma on OutMatte.",
+                     "Ferry four mattes/masks through a comp on the Result + OutMatte wire pair; unpack with channel_unpack.",
+                     "Matte 1 + Matte 2 + Front 1 + Front 2"),
     "channel_unpack": ("Passes a packed RGB (from channel_pack) through unchanged and routes one channel "
-                       "to the Matte: `pick` 0/1/2 selects r1/g1/b1.",
+                       "to the Matte: `pick` 0/1/2/3 selects r1/g1/b1/m1.",
                        "Recover a packed mask and send it to OutMatte at the destination; pairs with channel_pack.",
-                       "Front 1 (the packed RGB)"),
+                       "Front 1 (the packed RGB) + Matte 1 (the ferried 4th channel)"),
     "dual_output_depth": ("ONE node, TWO products: RGB is a depth-tinted grade of the beauty (Front 1) while "
                           "the Matte independently keys a depth slab via smoothstep(near, far, m1).",
                           "Tint the beauty by depth AND export a depth-slab matte from the same node — e.g. an "
@@ -2653,7 +2655,7 @@ EXPECTS = {
     "coc_from_depth": "depth raw in; outputs a 0..1 blur-amount map (Raw/Data)",
     # control_surfaces
     "painted_grade": "Front 1 in your grading/scene-linear space; Front 2 is a 0..1 data control map",
-    "channel_pack": "any (the three packed signals are data — tag the output Raw/Data)",
+    "channel_pack": "any (the four packed signals are data — tag both outputs Raw/Data)",
     "channel_unpack": "any (operates on the channels as data)",
     "dual_output_depth": "depth raw on Matte 1; beauty in your working/scene-linear space",
     # stylization
@@ -4940,30 +4942,36 @@ Exposure first (linear multiply), then saturation, then the hue rotation on the 
     "channel_pack": """
 ## Notes
 
-A **3-into-1 muxer**: stuff three unrelated single-channel signals into one RGB so they ride a
-single connection through a comp, then split them back out with `channel_unpack` at the far
-end. Saves wiring and keeps related masks travelling together.
+A **4-into-1-node muxer**: stuff four unrelated single-channel signals into one node's outputs
+so they ride a wire *pair* (Result + OutMatte) through a comp, then split them back out with
+`channel_unpack` at the far end. Saves wiring and keeps related masks travelling together.
 
 ### The packing
-- **red** = Matte 1, **green** = Matte 2, **blue** = Front 1 **luma** (Rec.709). Matte = 1.
-- Blue is luma rather than a raw channel so the third slot can carry a brightness/key signal;
-  swap it for `b1` in `generate_setups.py` if you'd rather ferry a literal blue channel.
+- **red** = Matte 1, **green** = Matte 2, **blue** = Front 1 **luma** (Rec.709) — all on the
+  **Result** output. **Channel 4** = Front 2 **luma**, on the **OutMatte** output.
+- The lumas are used rather than raw channels so those slots work whether the Front is a
+  colour plate (carries its brightness/key) or a grayscale mask; swap for `b1`/`b2` in
+  `generate_setups.py` if you'd rather ferry a literal single channel.
 
-### Why blue is a luma, and how to pack three *mattes*
-The node has only **two Matte sockets** (`m1`, `m2`) — there is no third Matte input — so the
-third packed signal **must come from a Front input**. Blue reads **Front 1's luma** so that slot
-works whether Front 1 is a colour plate (carries its brightness/key) or a grayscale mask.
-- **Yes, you can pack three mattes:** feed your third matte into **Front 1**. For a grayscale
-  matte `r1 = g1 = b1`, so its **luma equals the matte value** — `channel_unpack` recovers it
-  exactly. No change needed; the wiring is just `m1`, `m2`, and the third matte on **Front 1**.
-- Only switch blue to a raw channel (`r1`/`b1`) if your third signal lives in a **single channel
-  of a colour** Front 1 (where luma would blend it with the other two channels).
+### The topology (why 4 needs two wires)
+The **Result socket is RGB — three channels** — so the fourth signal has to leave through the
+**OutMatte** output: run BOTH wires to the far end (Result → `channel_unpack` Front 1,
+OutMatte → its Matte 1). That second wire is no extra cost at the destination —
+`channel_unpack`'s own OutMatte needs *something* on Matte 1 anyway, and now that wire
+carries real data. Pack-side OutMatte always renders because Matte 1 is a packed input by
+construction. (Same two-outputs-at-once trick as `dual_output_depth`.)
+
+### How to pack four *mattes*
+The node has only **two Matte sockets** (`m1`, `m2`), so signals 3 and 4 come in on the
+Fronts. For a grayscale matte `r = g = b`, so its **luma equals the matte value** — recovered
+exactly. Wiring: matte A → Matte 1, B → Matte 2, C → Front 1, D → Front 2. Only three to
+ferry? Leave Front 2 unconnected — channels 1–3 are unchanged from the old 3-wide pack.
 
 ### Practical notes
-- The packed channels are **data, not colour** — tag the output **Raw/Data** so colour
+- The packed channels are **data, not colour** — tag **both outputs** Raw/Data so colour
   management doesn't bend the values before you unpack them.
-- Unpack partner: **`channel_unpack`** (route any packed channel to a Matte). Keep both ends in
-  the same space/data tag.
+- Unpack partner: **`channel_unpack`** (`pick` 0–3 routes any packed channel to its OutMatte).
+  Keep both ends in the same space/data tag.
 """,
     "channel_unpack": """
 ## Notes
@@ -4972,16 +4980,21 @@ The **demuxer** for `channel_pack` (or any packed RGB). It passes the full RGB t
 untouched and additionally **routes one chosen channel to the OutMatte**, so you can recover a
 ferried mask and feed it straight to a downstream matte input.
 
+### Wiring
+`channel_pack`'s **Result → Front 1** (channels 1–3) and its **OutMatte → Matte 1**
+(channel 4). Both wires matter: Matte 1 carries the ferried fourth signal AND satisfies the
+node's OutMatte-needs-Matte-1 rule in one go.
+
 ### Picking the channel
-`pick` selects which channel goes to the Matte: **0 = red, 1 = green, 2 = blue**. It's a
-branchless `step`/`mix` select (no arrays in GLSL): `step(0.5, pick)` switches r→g, then
-`step(1.5, pick)` switches that→b.
+`pick` selects which channel goes to the Matte: **0 = red, 1 = green, 2 = blue, 3 = the
+Matte 1 input** (the pack's fourth channel). It's a branchless `step`/`mix` select (no arrays
+in GLSL): `step(0.5, pick)` switches r→g, `step(1.5, pick)` switches that→b, and
+`step(2.5, pick)` switches that→m1.
 
 ### Practical notes
 - RGB out = RGB in, so this is non-destructive on the image; it only *derives* the Matte.
-- **OutMatte only renders when Matte 1 is connected** — the Matte expression here reads Front 1,
-  but Flame still requires Matte 1 wired for the OutMatte to appear. Connect anything (even the
-  packed clip) to Matte 1.
+- Ferrying only three channels (no Front 2 on the pack)? Wire the packed clip itself to
+  Matte 1 as before — `pick` 3 then just reads that clip's matte.
 - Pairs with **`channel_pack`**; keep the Raw/Data tag consistent across the pair.
 """,
     "dual_output_depth": """
@@ -5597,14 +5610,16 @@ DEPENDS = {
                           "— Paint, a roto fill, a ramp, or another generator."),
 
     # ---- Paired Pixel Expression nodes ----
-    "channel_pack": _dep("Matte 1 + Matte 2 + Front 1 → **this node** → `channel_unpack`",
-                         "Ferries three single-channel signals down **one** RGB connection (red = "
-                         "Matte 1, green = Matte 2, blue = Front 1 luma). Useless without its "
-                         "partner **`channel_unpack`** at the far end to recover them."),
-    "channel_unpack": _dep("`channel_pack` output (Front 1) → **this node**",
-                           "The other half of the pair: takes a **packed RGB** (from "
-                           "`channel_pack`) on Front 1 and routes one channel to OutMatte (`pick` = "
-                           "0/1/2 selects r/g/b)."),
+    "channel_pack": _dep("Matte 1 + Matte 2 + Front 1 + Front 2 → **this node** → `channel_unpack`",
+                         "Ferries FOUR single-channel signals on the Result + OutMatte wire pair "
+                         "(red = Matte 1, green = Matte 2, blue = Front 1 luma; OutMatte = Front 2 "
+                         "luma — the Result socket is RGB-only, so channel 4 rides the OutMatte). "
+                         "Useless without its partner **`channel_unpack`** at the far end to "
+                         "recover them."),
+    "channel_unpack": _dep("`channel_pack` Result (Front 1) + its OutMatte (Matte 1) → **this node**",
+                           "The other half of the pair: takes the **packed RGB** on Front 1 and the "
+                           "ferried fourth channel on Matte 1, and routes one to OutMatte (`pick` = "
+                           "0/1/2/3 selects r/g/b/m1)."),
     "rgb_to_hsv": _dep("**this node** → an HSV consumer (e.g. `hsv_to_rgb`)",
                        "Emits an **HSV-encoded** image (H,S,V in R,G,B) — not a display picture. "
                        "Bracket a hand-built HSV operation with `rgb_to_hsv` … `hsv_to_rgb`, or "
@@ -5662,6 +5677,19 @@ def _fmt_vars(variables):
 # neutral-default / missing-second-input traps, not bugs. Add an entry for any
 # setup whose result isn't self-evident on load.
 QUICK_TEST = {
+    # ── experimental (4-wide pack, 2026-07-23 — re-verify in Flame) ──
+    "channel_pack": """
+Wire FOUR different greyscale clips/mattes: A → **Matte 1**, B → **Matte 2**, C → **Front 1**,
+D → **Front 2**. The **Result** reads as a false-colour RGB (A in red, B in green, C's luma in
+blue) and the **OutMatte** shows D's luma. Nothing on Front 2 → OutMatte reads black — that's
+the empty 4th slot, not a bug. Confirm the round trip with `channel_unpack` (Result → its
+Front 1, OutMatte → its Matte 1): `pick` 0/1/2/3 must reproduce A/B/C/D on its OutMatte.""",
+    "channel_unpack": """
+Feed `channel_pack`'s **Result → Front 1** and its **OutMatte → Matte 1** (that wire is the
+ferried 4th channel AND what makes this node's OutMatte render). RGB passes through
+untouched; step `pick` through 0 → 1 → 2 → 3 and watch OutMatte flip between the four packed
+signals (3 = the Matte 1 input). With `pick` 3 and nothing on Matte 1 the matte reads
+black — wire the 4th channel (or any clip) in.""",
     # ── hsv_color (sandwich demo) ──
     "hsv_grade": """
 Wire a colourful clip → `rgb_to_hsv` → **this node** → `hsv_to_rgb` (Front 1 each time).
