@@ -58,6 +58,7 @@ and reference docs under `documentation/`:
 
 ```
 setups/
+  _READY_FOR_LOGIK/ # 1 — verified, staged for the next Portal upload: hsv_color/hsv_grade
   Uploaded to Logik-Portal/     # 112 — verified in Flame 2027.1, on the Logik Portal
     3d_position_tools/  animated_generators/  aov_tools/         color_grade/
     depth_tools/        diagnostics/          experimental/      hsv_color/
@@ -303,11 +304,11 @@ to the **image middle** (PR245); use **Show Icon** to drag it elsewhere.
 (outer edge stays fixed). `sdf_circle` → use `sdf_ring` for the hollow version.
 
 ### `hsv_color/` (split across `Uploaded to Logik-Portal/` and `WORK IN PROGRESS/`)
-**In `WORK IN PROGRESS/hsv_color/`:** `chroma_key`, `sat_matte`. **New, not yet sorted or
-Flame-verified (in the `setups/hsv_color/` fallback):** `hsv_grade` — grades the HSV-encoded
-data *between* `rgb_to_hsv` and `hsv_to_rgb` (its Quick test says how to wire the sandwich).
-The rest are uploaded. Note **`color_replace` was renamed `hsv_color_replace`** for the
-Portal upload.
+**In `WORK IN PROGRESS/hsv_color/`:** `chroma_key`, `sat_matte`. **New, verified in Flame
+2027.1 and staged in `setups/_READY_FOR_LOGIK/hsv_color/` for the next Portal upload:**
+`hsv_grade` — grades the HSV-encoded data *between* `rgb_to_hsv` and `hsv_to_rgb` (its Quick
+test says how to wire the sandwich). The rest are uploaded. Note **`color_replace` was
+renamed `hsv_color_replace`** for the Portal upload.
 
 | File | Use | Inputs needed | Variables (defaults) |
 |------|-----|---------------|----------------------|

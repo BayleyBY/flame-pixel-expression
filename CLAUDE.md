@@ -39,19 +39,19 @@ status — **this layout is hand-managed by the user; do not "fix" it back to fl
   `.md`) wherever it currently lives. Only a brand-new setup falls back to
   `setups/<category>/` — sort it into `Uploaded to Logik-Portal`/`WORK IN PROGRESS` by hand (ask the user
   where it belongs). Regeneration is verified byte-identical against the uploaded files.
-- **`setups/_READY_FOR_LOGIK/`** — was the user's staging area for the **next Portal upload
-  batch**. **Removed from disk 2026-07-23** (it was an empty scaffold, never visible to git);
-  the user may recreate it when staging the next batch. If it reappears, it's user-managed —
-  leave it alone; the in-place generator regenerates setups there like anywhere else.
+- **`setups/_READY_FOR_LOGIK/`** — the user's staging area for the **next Portal upload
+  batch** (briefly deleted while empty, recreated 2026-07-23). Currently holds
+  `hsv_color/hsv_grade`. User-managed — the user decides what goes in and when it ships;
+  the in-place generator regenerates setups here like anywhere else.
 - **`despill_blue` (added 2026-07-23)** — the blue-screen twin of `despill_green`. The user
   built it in Flame by modifying `despill_green` and verified it, then it was integrated into
   the generator and regenerated in place in `Uploaded to Logik-Portal/color_grade/` (the
   regenerated file differs from the user's Flame save only by whitespace in one expression).
-- **`hsv_grade` (added 2026-07-23, in the `setups/hsv_color/` FALLBACK — not yet sorted or
-  Flame-verified)** — grades HSV-ENCODED data between `rgb_to_hsv` and `hsv_to_rgb`
-  (wrapping `hueShift`, `satGain`/`satGamma`, `valGain`/`valGamma`; neutral defaults). Built
-  to demonstrate mid-sandwich HSV work; it has a Quick test and a `DEPENDS` entry. The user
-  decides where it lands in the layout and whether it's uploaded.
+- **`hsv_grade` (added 2026-07-23, VERIFIED in Flame the same day)** — grades HSV-ENCODED
+  data between `rgb_to_hsv` and `hsv_to_rgb` (wrapping `hueShift`, `satGain`/`satGamma`,
+  `valGain`/`valGamma`; neutral defaults). Built to demonstrate mid-sandwich HSV work; has a
+  Quick test and a `DEPENDS` entry. The user confirmed it loads and works correctly and
+  staged it in `_READY_FOR_LOGIK/hsv_color/` for the next Portal upload batch.
 
 ## Commands
 Generator + validator are pure-stdlib Python 3 — no deps, no venv, no install step.
@@ -121,8 +121,8 @@ files and their companion `.md` docs are generated from it.
 - `README.md` — human index (per-folder tables, colour-management, caveats).
 - `setups/` — the 158 generated `.pixel_expression_node` files + companion `.md` docs, split
   by publication status: `Uploaded to Logik-Portal/` (112, verified in Flame 2027.1, on the Logik Portal, 16
-  category subfolders) and `WORK IN PROGRESS/` (45 held back), plus `hsv_color/` (fallback —
-  holds the new unsorted `hsv_grade`). See "Library layout" above.
+  category subfolders) and `WORK IN PROGRESS/` (45 held back), plus `_READY_FOR_LOGIK/`
+  (next-upload staging — holds the Flame-verified `hsv_grade`). See "Library layout" above.
 - `documentation/pixelexpression1.pixel_expression_node` — a real Flame-saved file kept as a
   worked example of the **old pre-PR245** serialization (the original format doc was
   reverse-engineered from it; it no longer loads in the updated node — do NOT delete it. The
@@ -235,7 +235,8 @@ section. `stylization/` setups are collected in a `_STYLIZATION` list appended t
 `diagnostics` `experimental` `hsv_color` `just_for_fun` `matte_tools` `noise`
 `pattern_generator` `shapes` `stmap_generators` `stylize` `utility`
 
-**`hsv_color/` (1 — the new-setup fallback; awaiting the user's sort):** `hsv_grade`
+**`_READY_FOR_LOGIK/` (1 — Flame-verified, staged for the next Portal upload):**
+`hsv_color/hsv_grade`
 
 **`WORK IN PROGRESS/` (45 — held back; every `.md` here has a "### Quick test" recipe):**
 `color_grade` `depth_tools` `hsv_color` `matte_combine` `noise` `optics_physics`
